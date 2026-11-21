@@ -1,0 +1,2044 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Foot Photo Measure</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: photo stage on the left with its tools underneath, calibration and results in a side panel; stacked on phones.
+   Colour: slate neutrals with a blue bias, a dark stage so photos read clearly, one signal green for calibrated state. */
+:root {
+  --bg: #f2f4f8;
+  --fg: #121926;
+  --muted: #566175;
+  --line: #d3d9e3;
+  --panel: #ffffff;
+  --tint: #e5eaf2;
+  --ok: #1d8f55;
+  --warn: #b25a00;
+  --stage-bg: #0a1020;
+  --stage-fg: #e9edf3;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d121b; --fg: #e8edf5; --muted: #98a3b5; --line: #232c3b; --panel: #131a26; --tint: #1a2333;
+    --ok: #4cc98a; --warn: #f0a050; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d121b; --fg: #e8edf5; --muted: #98a3b5; --line: #232c3b; --panel: #131a26; --tint: #1a2333;
+  --ok: #4cc98a; --warn: #f0a050; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-block: 28px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1180px; margin: 0 auto; }
+header { margin-bottom: 20px; max-width: 70ch; }
+.eyebrow { margin: 0 0 8px; font: 500 12px/1.2 var(--font-mono); letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0 0 10px; font-size: clamp(26px, 4.2vw, 38px); line-height: 1.1; font-weight: 600; letter-spacing: -0.015em; text-wrap: balance; }
+.lede { margin: 0; color: var(--muted); font-size: 16px; }
+
+.app { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 980px) { .app { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; gap: 28px; } }
+
+/* Stage */
+.stage { position: relative; overflow: hidden; border-radius: 10px; background: var(--stage-bg); aspect-ratio: 4 / 3; color: var(--stage-fg); }
+@media (max-width: 640px) { .stage { aspect-ratio: 3 / 4; } }
+.stage canvas#cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+.banner {
+  position: absolute; left: 10px; top: 10px; right: 150px; z-index: 2; padding: 6px 10px; border-radius: 6px;
+  background: rgba(10, 16, 32, 0.82); color: var(--stage-fg); font-size: 13px; line-height: 1.35; pointer-events: none;
+}
+.loupe { position: absolute; top: 10px; right: 10px; z-index: 3; width: 120px; height: 120px; border-radius: 6px; border: 2px solid var(--stage-fg); background: #000; pointer-events: none; }
+.loupe.left { right: auto; left: 10px; }
+.empty { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 14px; padding: 24px; text-align: center; color: var(--stage-fg); }
+.empty p { margin: 0; max-width: 34ch; color: rgba(233, 237, 243, 0.78); }
+.stage.drag { outline: 2px dashed var(--stage-fg); outline-offset: -8px; }
+
+/* Buttons */
+.btn {
+  min-height: 40px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg);
+  font: 500 13px/1.2 var(--font-body); cursor: pointer;
+}
+.btn:hover:not(:disabled) { background: var(--tint); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.btn.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.btn.primary:hover:not(:disabled) { background: var(--fg); opacity: 0.88; }
+.btn:focus-visible, .lbl:focus-visible, .del:focus-visible { outline: 2px solid #7fb0ff; outline-offset: 2px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+.toolbar .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
+.hint { margin: 12px 0 0; font-size: 13px; color: var(--muted); max-width: 80ch; }
+
+/* Side panel */
+.side { display: grid; gap: 22px; }
+.card h2 { margin: 0 0 10px; font: 500 12px/1.2 var(--font-mono); letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); }
+.status { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.status .dot { flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 50%; background: var(--muted); }
+.status.ok .dot { background: var(--ok); }
+.status.warn .dot { background: var(--warn); }
+.status b { display: block; font-weight: 600; }
+.status span.d { display: block; color: var(--muted); font-size: 13px; }
+.row-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.filemeta { margin: 8px 0 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+
+.list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.list li { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 4px 10px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.list .sw { width: 12px; height: 12px; margin-top: 6px; border-radius: 50%; background: var(--c); }
+.lbl { width: 100%; padding: 2px 4px; margin: 0 0 0 -4px; border: 1px solid transparent; border-radius: 4px; background: none; color: var(--fg); font: 600 14px/1.4 var(--font-body); }
+.lbl:hover { border-color: var(--line); }
+.val { font: 500 17px/1.3 var(--font-mono); }
+.sub { font-size: 13px; color: var(--muted); }
+.del { width: 36px; height: 36px; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; }
+.del:hover { background: var(--tint); color: var(--fg); }
+.empty-list { margin: 0; padding: 12px 0; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+textarea.csv { width: 100%; margin-top: 10px; min-height: 110px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg); font: 12px/1.4 var(--font-mono); }
+.mode { display: grid; gap: 6px; margin: 0 0 12px; padding: 0; border: 0; min-width: 0; }
+.mode legend { padding: 0; margin-bottom: 4px; font-size: 13px; color: var(--muted); }
+.opt { display: flex; gap: 8px; align-items: center; min-height: 32px; cursor: pointer; }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 4px; }
+.fields label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.fields input { width: 100%; min-height: 38px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg); font: 500 14px var(--font-mono); }
+.fields input:focus-visible, .opt input:focus-visible { outline: 2px solid #7fb0ff; outline-offset: 2px; }
+.note { margin: 28px 0 0; max-width: 80ch; font-size: 13px; color: var(--muted); }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Photo measurement</p>
+    <h1>Measure a foot photo with ArUco markers</h1>
+    <p class="lede">Load a photo taken from directly above the printed sheet, or of a foot beside one marker of known size. The page finds the marker or markers and calibrates to millimetres, then you click points to measure distances, outlines, areas and angles.</p>
+  </header>
+
+  <div class="app">
+    <div>
+      <section class="stage" id="stage" aria-label="Photo workspace">
+        <canvas id="cv" aria-label="Photo with measurement points"></canvas>
+        <div class="banner" id="banner" hidden></div>
+        <canvas class="loupe" id="loupe" width="120" height="120" hidden></canvas>
+        <div class="empty" id="empty">
+          <p>Drop a photo of the printed sheet here, or choose one from your device.</p>
+          <button class="btn primary" id="btnLoad1" type="button">Choose photo</button>
+        </div>
+      </section>
+
+      <div class="toolbar" role="group" aria-label="Measuring tools">
+        <button class="btn" id="tDist" type="button" aria-pressed="false" disabled>Distance</button>
+        <button class="btn" id="tPath" type="button" aria-pressed="false" disabled>Path</button>
+        <button class="btn" id="tArea" type="button" aria-pressed="false" disabled>Area</button>
+        <button class="btn" id="tAngle" type="button" aria-pressed="false" disabled>Angle</button>
+        <span class="sep" aria-hidden="true"></span>
+        <button class="btn" id="bFinish" type="button" disabled>Finish</button>
+        <button class="btn" id="bUndo" type="button" disabled>Undo</button>
+      </div>
+      <div class="toolbar" role="group" aria-label="View controls">
+        <button class="btn" id="zIn" type="button" disabled aria-label="Zoom in">Zoom in</button>
+        <button class="btn" id="zOut" type="button" disabled aria-label="Zoom out">Zoom out</button>
+        <button class="btn" id="zFit" type="button" disabled>Fit photo</button>
+      </div>
+      <p class="hint" id="toolHint">Scroll or pinch to zoom, drag to pan, tap to place a point. Drag a placed point to adjust it. Enter finishes a path or area, Esc cancels.</p>
+    </div>
+
+    <div class="side">
+      <section class="card">
+        <h2>Photo</h2>
+        <button class="btn primary" id="btnLoad2" type="button">Choose photo</button>
+        <p class="filemeta" id="fileMeta">No photo loaded.</p>
+        <input type="file" id="file" accept="image/*" hidden>
+      </section>
+
+      <section class="card">
+        <h2>Calibration</h2>
+        <div class="status" id="calStatus" role="status">
+          <span class="dot"></span>
+          <div><b id="calTitle">Not calibrated</b><span class="d" id="calDetail">Load a photo and the markers are found automatically.</span></div>
+        </div>
+        <fieldset class="mode" id="modeSet" style="margin-top: 12px">
+          <legend>Calibrate from</legend>
+          <label class="opt"><input type="radio" name="cmode" value="sheet" checked> Printed A4 sheet (Sheet A or B)</label>
+          <label class="opt"><input type="radio" name="cmode" value="frame"> Compact frame (4 small markers, IDs 12-15)</label>
+          <label class="opt"><input type="radio" name="cmode" value="single"> One marker of known size</label>
+          <div class="fields" id="singleBox" hidden>
+            <label for="mkSize">Black square side (mm)<input id="mkSize" type="number" min="3" max="200" step="0.5" value="35" inputmode="decimal"></label>
+            <label for="mkId">Marker ID (blank = any)<input id="mkId" type="number" min="0" max="49" step="1" inputmode="numeric"></label>
+          </div>
+        </fieldset>
+        <div class="row-btns">
+          <button class="btn" id="bDetect" type="button" disabled>Detect markers again</button>
+          <button class="btn" id="bManual" type="button" disabled>Calibrate by 4 corners</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Measurements</h2>
+        <ul class="list" id="list"></ul>
+        <p class="empty-list" id="emptyList">Nothing measured yet.</p>
+        <div class="row-btns">
+          <button class="btn" id="bCopy" type="button" disabled>Copy results</button>
+          <button class="btn" id="bClear" type="button" disabled>Clear all</button>
+        </div>
+        <textarea class="csv" id="csv" readonly hidden aria-label="Results as CSV"></textarea>
+        <p class="filemeta">Copy results puts the measurements on your clipboard as CSV. Photos stay on your device and are never uploaded.</p>
+      </section>
+    </div>
+  </div>
+
+  <p class="note">Measurements are valid only for points lying on the sheet's flat surface. Anything raised above the paper, such as the arch or the top of the foot, reads larger than it is. A traced outline photographed on the sheet avoids this. Lens distortion is not corrected, so keep the camera square-on and a little way back. Check any new set-up by measuring the 100 mm scale bar printed on the sheet. This tool is for measurement support and is not a validated clinical device.</p>
+</div>
+
+<script>
+/*
+Copyright (c) 2011 Juan Mellado
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
+/*
+References:
+- "OpenCV: Open Computer Vision Library"
+  http://sourceforge.net/projects/opencvlibrary/
+- "Stack Blur: Fast But Goodlooking"
+  http://incubator.quasimondo.com/processing/fast_blur_deluxe.php
+*/
+
+var CV = CV || {};
+this.CV = CV;
+
+CV.Image = function(width, height, data){
+  this.width = width || 0;
+  this.height = height || 0;
+  this.data = data || [];
+};
+
+CV.grayscale = function(imageSrc, imageDst){
+  var src = imageSrc.data, dst = imageDst.data, len = src.length,
+      i = 0, j = 0;
+
+  for (; i < len; i += 4){
+    dst[j ++] =
+      (src[i] * 0.299 + src[i + 1] * 0.587 + src[i + 2] * 0.114 + 0.5) & 0xff;
+  }
+
+  imageDst.width = imageSrc.width;
+  imageDst.height = imageSrc.height;
+
+  return imageDst;
+};
+
+CV.threshold = function(imageSrc, imageDst, threshold){
+  var src = imageSrc.data, dst = imageDst.data,
+      len = src.length, tab = [], i;
+
+  for (i = 0; i < 256; ++ i){
+    tab[i] = i <= threshold? 0: 255;
+  }
+
+  for (i = 0; i < len; ++ i){
+    dst[i] = tab[ src[i] ];
+  }
+
+  imageDst.width = imageSrc.width;
+  imageDst.height = imageSrc.height;
+
+  return imageDst;
+};
+
+CV.adaptiveThreshold = function(imageSrc, imageDst, kernelSize, threshold){
+  var src = imageSrc.data, dst = imageDst.data, len = src.length, tab = [], i;
+
+  CV.stackBoxBlur(imageSrc, imageDst, kernelSize);
+
+  for (i = 0; i < 768; ++ i){
+    tab[i] = (i - 255 <= -threshold)? 255: 0;
+  }
+
+  for (i = 0; i < len; ++ i){
+    dst[i] = tab[ src[i] - dst[i] + 255 ];
+  }
+
+  imageDst.width = imageSrc.width;
+  imageDst.height = imageSrc.height;
+
+  return imageDst;
+};
+
+CV.otsu = function(imageSrc){
+  var src = imageSrc.data, len = src.length, hist = [],
+      threshold = 0, sum = 0, sumB = 0, wB = 0, wF = 0, max = 0,
+      mu, between, i;
+
+  for (i = 0; i < 256; ++ i){
+    hist[i] = 0;
+  }
+
+  for (i = 0; i < len; ++ i){
+    hist[ src[i] ] ++;
+  }
+
+  for (i = 0; i < 256; ++ i){
+    sum += hist[i] * i;
+  }
+
+  for (i = 0; i < 256; ++ i){
+    wB += hist[i];
+    if (0 !== wB){
+
+      wF = len - wB;
+      if (0 === wF){
+        break;
+      }
+
+      sumB += hist[i] * i;
+
+      mu = (sumB / wB) - ( (sum - sumB) / wF );
+
+      between = wB * wF * mu * mu;
+
+      if (between > max){
+        max = between;
+        threshold = i;
+      }
+    }
+  }
+
+  return threshold;
+};
+
+CV.stackBoxBlurMult =
+  [1, 171, 205, 293, 57, 373, 79, 137, 241, 27, 391, 357, 41, 19, 283, 265];
+
+CV.stackBoxBlurShift =
+  [0, 9, 10, 11, 9, 12, 10, 11, 12, 9, 13, 13, 10, 9, 13, 13];
+
+CV.BlurStack = function(){
+  this.color = 0;
+  this.next = null;
+};
+
+CV.stackBoxBlur = function(imageSrc, imageDst, kernelSize){
+  var src = imageSrc.data, dst = imageDst.data,
+      height = imageSrc.height, width = imageSrc.width,
+      heightMinus1 = height - 1, widthMinus1 = width - 1,
+      size = kernelSize + kernelSize + 1, radius = kernelSize + 1,
+      mult = CV.stackBoxBlurMult[kernelSize],
+      shift = CV.stackBoxBlurShift[kernelSize],
+      stack, stackStart, color, sum, pos, start, p, x, y, i;
+
+  stack = stackStart = new CV.BlurStack();
+  for (i = 1; i < size; ++ i){
+    stack = stack.next = new CV.BlurStack();
+  }
+  stack.next = stackStart;
+
+  pos = 0;
+
+  for (y = 0; y < height; ++ y){
+    start = pos;
+
+    color = src[pos];
+    sum = radius * color;
+
+    stack = stackStart;
+    for (i = 0; i < radius; ++ i){
+      stack.color = color;
+      stack = stack.next;
+    }
+    for (i = 1; i < radius; ++ i){
+      stack.color = src[pos + i];
+      sum += stack.color;
+      stack = stack.next;
+    }
+
+    stack = stackStart;
+    for (x = 0; x < width; ++ x){
+      dst[pos ++] = (sum * mult) >>> shift;
+
+      p = x + radius;
+      p = start + (p < widthMinus1? p: widthMinus1);
+      sum -= stack.color - src[p];
+
+      stack.color = src[p];
+      stack = stack.next;
+    }
+  }
+
+  for (x = 0; x < width; ++ x){
+    pos = x;
+    start = pos + width;
+
+    color = dst[pos];
+    sum = radius * color;
+
+    stack = stackStart;
+    for (i = 0; i < radius; ++ i){
+      stack.color = color;
+      stack = stack.next;
+    }
+    for (i = 1; i < radius; ++ i){
+      stack.color = dst[start];
+      sum += stack.color;
+      stack = stack.next;
+
+      start += width;
+    }
+
+    stack = stackStart;
+    for (y = 0; y < height; ++ y){
+      dst[pos] = (sum * mult) >>> shift;
+
+      p = y + radius;
+      p = x + ( (p < heightMinus1? p: heightMinus1) * width );
+      sum -= stack.color - dst[p];
+
+      stack.color = dst[p];
+      stack = stack.next;
+
+      pos += width;
+    }
+  }
+
+  return imageDst;
+};
+
+CV.gaussianBlur = function(imageSrc, imageDst, imageMean, kernelSize){
+  var kernel = CV.gaussianKernel(kernelSize);
+
+  imageDst.width = imageSrc.width;
+  imageDst.height = imageSrc.height;
+
+  imageMean.width = imageSrc.width;
+  imageMean.height = imageSrc.height;
+
+  CV.gaussianBlurFilter(imageSrc, imageMean, kernel, true);
+  CV.gaussianBlurFilter(imageMean, imageDst, kernel, false);
+
+  return imageDst;
+};
+
+CV.gaussianBlurFilter = function(imageSrc, imageDst, kernel, horizontal){
+  var src = imageSrc.data, dst = imageDst.data,
+      height = imageSrc.height, width = imageSrc.width,
+      pos = 0, limit = kernel.length >> 1,
+      cur, value, i, j, k;
+
+  for (i = 0; i < height; ++ i){
+
+    for (j = 0; j < width; ++ j){
+      value = 0.0;
+
+      for (k = -limit; k <= limit; ++ k){
+
+        if (horizontal){
+          cur = pos + k;
+          if (j + k < 0){
+            cur = pos;
+          }
+          else if (j + k >= width){
+            cur = pos;
+          }
+        }else{
+          cur = pos + (k * width);
+          if (i + k < 0){
+            cur = pos;
+          }
+          else if (i + k >= height){
+            cur = pos;
+          }
+        }
+
+        value += kernel[limit + k] * src[cur];
+      }
+
+      dst[pos ++] = horizontal? value: (value + 0.5) & 0xff;
+    }
+  }
+
+  return imageDst;
+};
+
+CV.gaussianKernel = function(kernelSize){
+  var tab =
+    [ [1],
+      [0.25, 0.5, 0.25],
+      [0.0625, 0.25, 0.375, 0.25, 0.0625],
+      [0.03125, 0.109375, 0.21875, 0.28125, 0.21875, 0.109375, 0.03125] ],
+    kernel = [], center, sigma, scale2X, sum, x, i;
+
+  if ( (kernelSize <= 7) && (kernelSize % 2 === 1) ){
+    kernel = tab[kernelSize >> 1];
+  }else{
+    center = (kernelSize - 1.0) * 0.5;
+    sigma = 0.8 + (0.3 * (center - 1.0) );
+    scale2X = -0.5 / (sigma * sigma);
+    sum = 0.0;
+    for (i = 0; i < kernelSize; ++ i){
+      x = i - center;
+      sum += kernel[i] = Math.exp(scale2X * x * x);
+    }
+    sum = 1 / sum;
+    for (i = 0; i < kernelSize; ++ i){
+      kernel[i] *= sum;
+    }
+  }
+
+  return kernel;
+};
+
+CV.findContours = function(imageSrc, binary){
+  var width = imageSrc.width, height = imageSrc.height, contours = [],
+      src, deltas, pos, pix, nbd, outer, hole, i, j;
+
+  src = CV.binaryBorder(imageSrc, binary);
+
+  deltas = CV.neighborhoodDeltas(width + 2);
+
+  pos = width + 3;
+  nbd = 1;
+
+  for (i = 0; i < height; ++ i, pos += 2){
+
+    for (j = 0; j < width; ++ j, ++ pos){
+      pix = src[pos];
+
+      if (0 !== pix){
+        outer = hole = false;
+
+        if (1 === pix && 0 === src[pos - 1]){
+          outer = true;
+        }
+        else if (pix >= 1 && 0 === src[pos + 1]){
+          hole = true;
+        }
+
+        if (outer || hole){
+          ++ nbd;
+
+          contours.push( CV.borderFollowing(src, pos, nbd, {x: j, y: i}, hole, deltas) );
+        }
+      }
+    }
+  }
+
+  return contours;
+};
+
+CV.borderFollowing = function(src, pos, nbd, point, hole, deltas){
+  var contour = [], pos1, pos3, pos4, s, s_end, s_prev;
+
+  contour.hole = hole;
+
+  s = s_end = hole? 0: 4;
+  do{
+    s = (s - 1) & 7;
+    pos1 = pos + deltas[s];
+    if (src[pos1] !== 0){
+      break;
+    }
+  }while(s !== s_end);
+
+  if (s === s_end){
+    src[pos] = -nbd;
+    contour.push( {x: point.x, y: point.y} );
+
+  }else{
+    pos3 = pos;
+    s_prev = s ^ 4;
+
+    while(true){
+      s_end = s;
+
+      do{
+        pos4 = pos3 + deltas[++ s];
+      }while(src[pos4] === 0);
+
+      s &= 7;
+
+      if ( ( (s - 1) >>> 0) < (s_end >>> 0) ){
+        src[pos3] = -nbd;
+      }
+      else if (src[pos3] === 1){
+        src[pos3] = nbd;
+      }
+
+      contour.push( {x: point.x, y: point.y} );
+
+      s_prev = s;
+
+      point.x += CV.neighborhood[s][0];
+      point.y += CV.neighborhood[s][1];
+
+      if ( (pos4 === pos) && (pos3 === pos1) ){
+        break;
+      }
+
+      pos3 = pos4;
+      s = (s + 4) & 7;
+    }
+  }
+
+  return contour;
+};
+
+CV.neighborhood =
+  [ [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1], [1, 1] ];
+
+CV.neighborhoodDeltas = function(width){
+  var deltas = [], len = CV.neighborhood.length, i = 0;
+
+  for (; i < len; ++ i){
+    deltas[i] = CV.neighborhood[i][0] + (CV.neighborhood[i][1] * width);
+  }
+
+  return deltas.concat(deltas);
+};
+
+CV.approxPolyDP = function(contour, epsilon){
+  var slice = {start_index: 0, end_index: 0},
+      right_slice = {start_index: 0, end_index: 0},
+      poly = [], stack = [], len = contour.length,
+      pt, start_pt, end_pt, dist, max_dist, le_eps,
+      dx, dy, i, j, k;
+
+  epsilon *= epsilon;
+
+  k = 0;
+
+  for (i = 0; i < 3; ++ i){
+    max_dist = 0;
+
+    k = (k + right_slice.start_index) % len;
+    start_pt = contour[k];
+    if (++ k === len) {k = 0;}
+
+    for (j = 1; j < len; ++ j){
+      pt = contour[k];
+      if (++ k === len) {k = 0;}
+
+      dx = pt.x - start_pt.x;
+      dy = pt.y - start_pt.y;
+      dist = dx * dx + dy * dy;
+
+      if (dist > max_dist){
+        max_dist = dist;
+        right_slice.start_index = j;
+      }
+    }
+  }
+
+  if (max_dist <= epsilon){
+    poly.push( {x: start_pt.x, y: start_pt.y} );
+
+  }else{
+    slice.start_index = k;
+    slice.end_index = (right_slice.start_index += slice.start_index);
+
+    right_slice.start_index -= right_slice.start_index >= len? len: 0;
+    right_slice.end_index = slice.start_index;
+    if (right_slice.end_index < right_slice.start_index){
+      right_slice.end_index += len;
+    }
+
+    stack.push( {start_index: right_slice.start_index, end_index: right_slice.end_index} );
+    stack.push( {start_index: slice.start_index, end_index: slice.end_index} );
+  }
+
+  while(stack.length !== 0){
+    slice = stack.pop();
+
+    end_pt = contour[slice.end_index % len];
+    start_pt = contour[k = slice.start_index % len];
+    if (++ k === len) {k = 0;}
+
+    if (slice.end_index <= slice.start_index + 1){
+      le_eps = true;
+
+    }else{
+      max_dist = 0;
+
+      dx = end_pt.x - start_pt.x;
+      dy = end_pt.y - start_pt.y;
+
+      for (i = slice.start_index + 1; i < slice.end_index; ++ i){
+        pt = contour[k];
+        if (++ k === len) {k = 0;}
+
+        dist = Math.abs( (pt.y - start_pt.y) * dx - (pt.x - start_pt.x) * dy);
+
+        if (dist > max_dist){
+          max_dist = dist;
+          right_slice.start_index = i;
+        }
+      }
+
+      le_eps = max_dist * max_dist <= epsilon * (dx * dx + dy * dy);
+    }
+
+    if (le_eps){
+      poly.push( {x: start_pt.x, y: start_pt.y} );
+
+    }else{
+      right_slice.end_index = slice.end_index;
+      slice.end_index = right_slice.start_index;
+
+      stack.push( {start_index: right_slice.start_index, end_index: right_slice.end_index} );
+      stack.push( {start_index: slice.start_index, end_index: slice.end_index} );
+    }
+  }
+
+  return poly;
+};
+
+CV.warp = function(imageSrc, imageDst, contour, warpSize){
+  var src = imageSrc.data, dst = imageDst.data,
+      width = imageSrc.width, height = imageSrc.height,
+      pos = 0,
+      sx1, sx2, dx1, dx2, sy1, sy2, dy1, dy2, p1, p2, p3, p4,
+      m, r, s, t, u, v, w, x, y, i, j;
+
+  m = CV.getPerspectiveTransform(contour, warpSize - 1);
+
+  r = m[8];
+  s = m[2];
+  t = m[5];
+
+  for (i = 0; i < warpSize; ++ i){
+    r += m[7];
+    s += m[1];
+    t += m[4];
+
+    u = r;
+    v = s;
+    w = t;
+
+    for (j = 0; j < warpSize; ++ j){
+      u += m[6];
+      v += m[0];
+      w += m[3];
+
+      x = v / u;
+      y = w / u;
+
+      sx1 = x >>> 0;
+      sx2 = (sx1 === width - 1)? sx1: sx1 + 1;
+      dx1 = x - sx1;
+      dx2 = 1.0 - dx1;
+
+      sy1 = y >>> 0;
+      sy2 = (sy1 === height - 1)? sy1: sy1 + 1;
+      dy1 = y - sy1;
+      dy2 = 1.0 - dy1;
+
+      p1 = p2 = sy1 * width;
+      p3 = p4 = sy2 * width;
+
+      dst[pos ++] =
+        (dy2 * (dx2 * src[p1 + sx1] + dx1 * src[p2 + sx2]) +
+         dy1 * (dx2 * src[p3 + sx1] + dx1 * src[p4 + sx2]) ) & 0xff;
+
+    }
+  }
+
+  imageDst.width = warpSize;
+  imageDst.height = warpSize;
+
+  return imageDst;
+};
+
+CV.getPerspectiveTransform = function(src, size){
+  var rq = CV.square2quad(src);
+
+  rq[0] /= size;
+  rq[1] /= size;
+  rq[3] /= size;
+  rq[4] /= size;
+  rq[6] /= size;
+  rq[7] /= size;
+
+  return rq;
+};
+
+CV.square2quad = function(src){
+  var sq = [], px, py, dx1, dx2, dy1, dy2, den;
+
+  px = src[0].x - src[1].x + src[2].x - src[3].x;
+  py = src[0].y - src[1].y + src[2].y - src[3].y;
+
+  if (0 === px && 0 === py){
+    sq[0] = src[1].x - src[0].x;
+    sq[1] = src[2].x - src[1].x;
+    sq[2] = src[0].x;
+    sq[3] = src[1].y - src[0].y;
+    sq[4] = src[2].y - src[1].y;
+    sq[5] = src[0].y;
+    sq[6] = 0;
+    sq[7] = 0;
+    sq[8] = 1;
+
+  }else{
+    dx1 = src[1].x - src[2].x;
+    dx2 = src[3].x - src[2].x;
+    dy1 = src[1].y - src[2].y;
+    dy2 = src[3].y - src[2].y;
+    den = dx1 * dy2 - dx2 * dy1;
+
+    sq[6] = (px * dy2 - dx2 * py) / den;
+    sq[7] = (dx1 * py - px * dy1) / den;
+    sq[8] = 1;
+    sq[0] = src[1].x - src[0].x + sq[6] * src[1].x;
+    sq[1] = src[3].x - src[0].x + sq[7] * src[3].x;
+    sq[2] = src[0].x;
+    sq[3] = src[1].y - src[0].y + sq[6] * src[1].y;
+    sq[4] = src[3].y - src[0].y + sq[7] * src[3].y;
+    sq[5] = src[0].y;
+  }
+
+  return sq;
+};
+
+CV.isContourConvex = function(contour){
+  var orientation = 0, convex = true,
+      len = contour.length, i = 0, j = 0,
+      cur_pt, prev_pt, dxdy0, dydx0, dx0, dy0, dx, dy;
+
+  prev_pt = contour[len - 1];
+  cur_pt = contour[0];
+
+  dx0 = cur_pt.x - prev_pt.x;
+  dy0 = cur_pt.y - prev_pt.y;
+
+  for (; i < len; ++ i){
+    if (++ j === len) {j = 0;}
+
+    prev_pt = cur_pt;
+    cur_pt = contour[j];
+
+    dx = cur_pt.x - prev_pt.x;
+    dy = cur_pt.y - prev_pt.y;
+    dxdy0 = dx * dy0;
+    dydx0 = dy * dx0;
+
+    orientation |= dydx0 > dxdy0? 1: (dydx0 < dxdy0? 2: 3);
+
+    if (3 === orientation){
+        convex = false;
+        break;
+    }
+
+    dx0 = dx;
+    dy0 = dy;
+  }
+
+  return convex;
+};
+
+CV.perimeter = function(poly){
+  var len = poly.length, i = 0, j = len - 1,
+      p = 0.0, dx, dy;
+
+  for (; i < len; j = i ++){
+    dx = poly[i].x - poly[j].x;
+    dy = poly[i].y - poly[j].y;
+
+    p += Math.sqrt(dx * dx + dy * dy) ;
+  }
+
+  return p;
+};
+
+CV.minEdgeLength = function(poly){
+  var len = poly.length, i = 0, j = len - 1,
+      min = Infinity, d, dx, dy;
+
+  for (; i < len; j = i ++){
+    dx = poly[i].x - poly[j].x;
+    dy = poly[i].y - poly[j].y;
+
+    d = dx * dx + dy * dy;
+
+    if (d < min){
+      min = d;
+    }
+  }
+
+  return Math.sqrt(min);
+};
+
+CV.countNonZero = function(imageSrc, square){
+  var src = imageSrc.data, height = square.height, width = square.width,
+      pos = square.x + (square.y * imageSrc.width),
+      span = imageSrc.width - width,
+      nz = 0, i, j;
+
+  for (i = 0; i < height; ++ i){
+
+    for (j = 0; j < width; ++ j){
+
+      if ( 0 !== src[pos ++] ){
+        ++ nz;
+      }
+    }
+
+    pos += span;
+  }
+
+  return nz;
+};
+
+CV.binaryBorder = function(imageSrc, dst){
+  var src = imageSrc.data, height = imageSrc.height, width = imageSrc.width,
+      posSrc = 0, posDst = 0, i, j;
+
+  for (j = -2; j < width; ++ j){
+    dst[posDst ++] = 0;
+  }
+
+  for (i = 0; i < height; ++ i){
+    dst[posDst ++] = 0;
+
+    for (j = 0; j < width; ++ j){
+      dst[posDst ++] = (0 === src[posSrc ++]? 0: 1);
+    }
+
+    dst[posDst ++] = 0;
+  }
+
+  for (j = -2; j < width; ++ j){
+    dst[posDst ++] = 0;
+  }
+
+  return dst;
+};
+
+</script>
+<script>
+/*
+Copyright (c) 2020 Damiano Falcioni
+Copyright (c) 2011 Juan Mellado
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
+/*
+References:
+- "ArUco: a minimal library for Augmented Reality applications based on OpenCv"
+  http://www.uco.es/investiga/grupos/ava/node/26
+- "js-aruco: a port to JavaScript of the ArUco library"
+  https://github.com/jcmellado/js-aruco
+*/
+
+var AR = {};
+var CV = this.CV || require('./cv').CV;
+this.AR = AR;
+
+AR.DICTIONARIES = {
+  ARUCO: {
+    nBits: 25,
+    tau: 3,
+    codeList: [0x1084210,0x1084217,0x1084209,0x108420e,0x10842f0,0x10842f7,0x10842e9,0x10842ee,0x1084130,0x1084137,0x1084129,0x108412e,0x10841d0,0x10841d7,0x10841c9,0x10841ce,0x1085e10,0x1085e17,0x1085e09,0x1085e0e,0x1085ef0,0x1085ef7,0x1085ee9,0x1085eee,0x1085d30,0x1085d37,0x1085d29,0x1085d2e,0x1085dd0,0x1085dd7,0x1085dc9,0x1085dce,0x1082610,0x1082617,0x1082609,0x108260e,0x10826f0,0x10826f7,0x10826e9,0x10826ee,0x1082530,0x1082537,0x1082529,0x108252e,0x10825d0,0x10825d7,0x10825c9,0x10825ce,0x1083a10,0x1083a17,0x1083a09,0x1083a0e,0x1083af0,0x1083af7,0x1083ae9,0x1083aee,0x1083930,0x1083937,0x1083929,0x108392e,0x10839d0,0x10839d7,0x10839c9,0x10839ce,0x10bc210,0x10bc217,0x10bc209,0x10bc20e,0x10bc2f0,0x10bc2f7,0x10bc2e9,0x10bc2ee,0x10bc130,0x10bc137,0x10bc129,0x10bc12e,0x10bc1d0,0x10bc1d7,0x10bc1c9,0x10bc1ce,0x10bde10,0x10bde17,0x10bde09,0x10bde0e,0x10bdef0,0x10bdef7,0x10bdee9,0x10bdeee,0x10bdd30,0x10bdd37,0x10bdd29,0x10bdd2e,0x10bddd0,0x10bddd7,0x10bddc9,0x10bddce,0x10ba610,0x10ba617,0x10ba609,0x10ba60e,0x10ba6f0,0x10ba6f7,0x10ba6e9,0x10ba6ee,0x10ba530,0x10ba537,0x10ba529,0x10ba52e,0x10ba5d0,0x10ba5d7,0x10ba5c9,0x10ba5ce,0x10bba10,0x10bba17,0x10bba09,0x10bba0e,0x10bbaf0,0x10bbaf7,0x10bbae9,0x10bbaee,0x10bb930,0x10bb937,0x10bb929,0x10bb92e,0x10bb9d0,0x10bb9d7,0x10bb9c9,0x10bb9ce,0x104c210,0x104c217,0x104c209,0x104c20e,0x104c2f0,0x104c2f7,0x104c2e9,0x104c2ee,0x104c130,0x104c137,0x104c129,0x104c12e,0x104c1d0,0x104c1d7,0x104c1c9,0x104c1ce,0x104de10,0x104de17,0x104de09,0x104de0e,0x104def0,0x104def7,0x104dee9,0x104deee,0x104dd30,0x104dd37,0x104dd29,0x104dd2e,0x104ddd0,0x104ddd7,0x104ddc9,0x104ddce,0x104a610,0x104a617,0x104a609,0x104a60e,0x104a6f0,0x104a6f7,0x104a6e9,0x104a6ee,0x104a530,0x104a537,0x104a529,0x104a52e,0x104a5d0,0x104a5d7,0x104a5c9,0x104a5ce,0x104ba10,0x104ba17,0x104ba09,0x104ba0e,0x104baf0,0x104baf7,0x104bae9,0x104baee,0x104b930,0x104b937,0x104b929,0x104b92e,0x104b9d0,0x104b9d7,0x104b9c9,0x104b9ce,0x1074210,0x1074217,0x1074209,0x107420e,0x10742f0,0x10742f7,0x10742e9,0x10742ee,0x1074130,0x1074137,0x1074129,0x107412e,0x10741d0,0x10741d7,0x10741c9,0x10741ce,0x1075e10,0x1075e17,0x1075e09,0x1075e0e,0x1075ef0,0x1075ef7,0x1075ee9,0x1075eee,0x1075d30,0x1075d37,0x1075d29,0x1075d2e,0x1075dd0,0x1075dd7,0x1075dc9,0x1075dce,0x1072610,0x1072617,0x1072609,0x107260e,0x10726f0,0x10726f7,0x10726e9,0x10726ee,0x1072530,0x1072537,0x1072529,0x107252e,0x10725d0,0x10725d7,0x10725c9,0x10725ce,0x1073a10,0x1073a17,0x1073a09,0x1073a0e,0x1073af0,0x1073af7,0x1073ae9,0x1073aee,0x1073930,0x1073937,0x1073929,0x107392e,0x10739d0,0x10739d7,0x10739c9,0x10739ce,0x1784210,0x1784217,0x1784209,0x178420e,0x17842f0,0x17842f7,0x17842e9,0x17842ee,0x1784130,0x1784137,0x1784129,0x178412e,0x17841d0,0x17841d7,0x17841c9,0x17841ce,0x1785e10,0x1785e17,0x1785e09,0x1785e0e,0x1785ef0,0x1785ef7,0x1785ee9,0x1785eee,0x1785d30,0x1785d37,0x1785d29,0x1785d2e,0x1785dd0,0x1785dd7,0x1785dc9,0x1785dce,0x1782610,0x1782617,0x1782609,0x178260e,0x17826f0,0x17826f7,0x17826e9,0x17826ee,0x1782530,0x1782537,0x1782529,0x178252e,0x17825d0,0x17825d7,0x17825c9,0x17825ce,0x1783a10,0x1783a17,0x1783a09,0x1783a0e,0x1783af0,0x1783af7,0x1783ae9,0x1783aee,0x1783930,0x1783937,0x1783929,0x178392e,0x17839d0,0x17839d7,0x17839c9,0x17839ce,0x17bc210,0x17bc217,0x17bc209,0x17bc20e,0x17bc2f0,0x17bc2f7,0x17bc2e9,0x17bc2ee,0x17bc130,0x17bc137,0x17bc129,0x17bc12e,0x17bc1d0,0x17bc1d7,0x17bc1c9,0x17bc1ce,0x17bde10,0x17bde17,0x17bde09,0x17bde0e,0x17bdef0,0x17bdef7,0x17bdee9,0x17bdeee,0x17bdd30,0x17bdd37,0x17bdd29,0x17bdd2e,0x17bddd0,0x17bddd7,0x17bddc9,0x17bddce,0x17ba610,0x17ba617,0x17ba609,0x17ba60e,0x17ba6f0,0x17ba6f7,0x17ba6e9,0x17ba6ee,0x17ba530,0x17ba537,0x17ba529,0x17ba52e,0x17ba5d0,0x17ba5d7,0x17ba5c9,0x17ba5ce,0x17bba10,0x17bba17,0x17bba09,0x17bba0e,0x17bbaf0,0x17bbaf7,0x17bbae9,0x17bbaee,0x17bb930,0x17bb937,0x17bb929,0x17bb92e,0x17bb9d0,0x17bb9d7,0x17bb9c9,0x17bb9ce,0x174c210,0x174c217,0x174c209,0x174c20e,0x174c2f0,0x174c2f7,0x174c2e9,0x174c2ee,0x174c130,0x174c137,0x174c129,0x174c12e,0x174c1d0,0x174c1d7,0x174c1c9,0x174c1ce,0x174de10,0x174de17,0x174de09,0x174de0e,0x174def0,0x174def7,0x174dee9,0x174deee,0x174dd30,0x174dd37,0x174dd29,0x174dd2e,0x174ddd0,0x174ddd7,0x174ddc9,0x174ddce,0x174a610,0x174a617,0x174a609,0x174a60e,0x174a6f0,0x174a6f7,0x174a6e9,0x174a6ee,0x174a530,0x174a537,0x174a529,0x174a52e,0x174a5d0,0x174a5d7,0x174a5c9,0x174a5ce,0x174ba10,0x174ba17,0x174ba09,0x174ba0e,0x174baf0,0x174baf7,0x174bae9,0x174baee,0x174b930,0x174b937,0x174b929,0x174b92e,0x174b9d0,0x174b9d7,0x174b9c9,0x174b9ce,0x1774210,0x1774217,0x1774209,0x177420e,0x17742f0,0x17742f7,0x17742e9,0x17742ee,0x1774130,0x1774137,0x1774129,0x177412e,0x17741d0,0x17741d7,0x17741c9,0x17741ce,0x1775e10,0x1775e17,0x1775e09,0x1775e0e,0x1775ef0,0x1775ef7,0x1775ee9,0x1775eee,0x1775d30,0x1775d37,0x1775d29,0x1775d2e,0x1775dd0,0x1775dd7,0x1775dc9,0x1775dce,0x1772610,0x1772617,0x1772609,0x177260e,0x17726f0,0x17726f7,0x17726e9,0x17726ee,0x1772530,0x1772537,0x1772529,0x177252e,0x17725d0,0x17725d7,0x17725c9,0x17725ce,0x1773a10,0x1773a17,0x1773a09,0x1773a0e,0x1773af0,0x1773af7,0x1773ae9,0x1773aee,0x1773930,0x1773937,0x1773929,0x177392e,0x17739d0,0x17739d7,0x17739c9,0x17739ce,0x984210,0x984217,0x984209,0x98420e,0x9842f0,0x9842f7,0x9842e9,0x9842ee,0x984130,0x984137,0x984129,0x98412e,0x9841d0,0x9841d7,0x9841c9,0x9841ce,0x985e10,0x985e17,0x985e09,0x985e0e,0x985ef0,0x985ef7,0x985ee9,0x985eee,0x985d30,0x985d37,0x985d29,0x985d2e,0x985dd0,0x985dd7,0x985dc9,0x985dce,0x982610,0x982617,0x982609,0x98260e,0x9826f0,0x9826f7,0x9826e9,0x9826ee,0x982530,0x982537,0x982529,0x98252e,0x9825d0,0x9825d7,0x9825c9,0x9825ce,0x983a10,0x983a17,0x983a09,0x983a0e,0x983af0,0x983af7,0x983ae9,0x983aee,0x983930,0x983937,0x983929,0x98392e,0x9839d0,0x9839d7,0x9839c9,0x9839ce,0x9bc210,0x9bc217,0x9bc209,0x9bc20e,0x9bc2f0,0x9bc2f7,0x9bc2e9,0x9bc2ee,0x9bc130,0x9bc137,0x9bc129,0x9bc12e,0x9bc1d0,0x9bc1d7,0x9bc1c9,0x9bc1ce,0x9bde10,0x9bde17,0x9bde09,0x9bde0e,0x9bdef0,0x9bdef7,0x9bdee9,0x9bdeee,0x9bdd30,0x9bdd37,0x9bdd29,0x9bdd2e,0x9bddd0,0x9bddd7,0x9bddc9,0x9bddce,0x9ba610,0x9ba617,0x9ba609,0x9ba60e,0x9ba6f0,0x9ba6f7,0x9ba6e9,0x9ba6ee,0x9ba530,0x9ba537,0x9ba529,0x9ba52e,0x9ba5d0,0x9ba5d7,0x9ba5c9,0x9ba5ce,0x9bba10,0x9bba17,0x9bba09,0x9bba0e,0x9bbaf0,0x9bbaf7,0x9bbae9,0x9bbaee,0x9bb930,0x9bb937,0x9bb929,0x9bb92e,0x9bb9d0,0x9bb9d7,0x9bb9c9,0x9bb9ce,0x94c210,0x94c217,0x94c209,0x94c20e,0x94c2f0,0x94c2f7,0x94c2e9,0x94c2ee,0x94c130,0x94c137,0x94c129,0x94c12e,0x94c1d0,0x94c1d7,0x94c1c9,0x94c1ce,0x94de10,0x94de17,0x94de09,0x94de0e,0x94def0,0x94def7,0x94dee9,0x94deee,0x94dd30,0x94dd37,0x94dd29,0x94dd2e,0x94ddd0,0x94ddd7,0x94ddc9,0x94ddce,0x94a610,0x94a617,0x94a609,0x94a60e,0x94a6f0,0x94a6f7,0x94a6e9,0x94a6ee,0x94a530,0x94a537,0x94a529,0x94a52e,0x94a5d0,0x94a5d7,0x94a5c9,0x94a5ce,0x94ba10,0x94ba17,0x94ba09,0x94ba0e,0x94baf0,0x94baf7,0x94bae9,0x94baee,0x94b930,0x94b937,0x94b929,0x94b92e,0x94b9d0,0x94b9d7,0x94b9c9,0x94b9ce,0x974210,0x974217,0x974209,0x97420e,0x9742f0,0x9742f7,0x9742e9,0x9742ee,0x974130,0x974137,0x974129,0x97412e,0x9741d0,0x9741d7,0x9741c9,0x9741ce,0x975e10,0x975e17,0x975e09,0x975e0e,0x975ef0,0x975ef7,0x975ee9,0x975eee,0x975d30,0x975d37,0x975d29,0x975d2e,0x975dd0,0x975dd7,0x975dc9,0x975dce,0x972610,0x972617,0x972609,0x97260e,0x9726f0,0x9726f7,0x9726e9,0x9726ee,0x972530,0x972537,0x972529,0x97252e,0x9725d0,0x9725d7,0x9725c9,0x9725ce,0x973a10,0x973a17,0x973a09,0x973a0e,0x973af0,0x973af7,0x973ae9,0x973aee,0x973930,0x973937,0x973929,0x97392e,0x9739d0,0x9739d7,0x9739c9,0x9739ce,0xe84210,0xe84217,0xe84209,0xe8420e,0xe842f0,0xe842f7,0xe842e9,0xe842ee,0xe84130,0xe84137,0xe84129,0xe8412e,0xe841d0,0xe841d7,0xe841c9,0xe841ce,0xe85e10,0xe85e17,0xe85e09,0xe85e0e,0xe85ef0,0xe85ef7,0xe85ee9,0xe85eee,0xe85d30,0xe85d37,0xe85d29,0xe85d2e,0xe85dd0,0xe85dd7,0xe85dc9,0xe85dce,0xe82610,0xe82617,0xe82609,0xe8260e,0xe826f0,0xe826f7,0xe826e9,0xe826ee,0xe82530,0xe82537,0xe82529,0xe8252e,0xe825d0,0xe825d7,0xe825c9,0xe825ce,0xe83a10,0xe83a17,0xe83a09,0xe83a0e,0xe83af0,0xe83af7,0xe83ae9,0xe83aee,0xe83930,0xe83937,0xe83929,0xe8392e,0xe839d0,0xe839d7,0xe839c9,0xe839ce,0xebc210,0xebc217,0xebc209,0xebc20e,0xebc2f0,0xebc2f7,0xebc2e9,0xebc2ee,0xebc130,0xebc137,0xebc129,0xebc12e,0xebc1d0,0xebc1d7,0xebc1c9,0xebc1ce,0xebde10,0xebde17,0xebde09,0xebde0e,0xebdef0,0xebdef7,0xebdee9,0xebdeee,0xebdd30,0xebdd37,0xebdd29,0xebdd2e,0xebddd0,0xebddd7,0xebddc9,0xebddce,0xeba610,0xeba617,0xeba609,0xeba60e,0xeba6f0,0xeba6f7,0xeba6e9,0xeba6ee,0xeba530,0xeba537,0xeba529,0xeba52e,0xeba5d0,0xeba5d7,0xeba5c9,0xeba5ce,0xebba10,0xebba17,0xebba09,0xebba0e,0xebbaf0,0xebbaf7,0xebbae9,0xebbaee,0xebb930,0xebb937,0xebb929,0xebb92e,0xebb9d0,0xebb9d7,0xebb9c9,0xebb9ce,0xe4c210,0xe4c217,0xe4c209,0xe4c20e,0xe4c2f0,0xe4c2f7,0xe4c2e9,0xe4c2ee,0xe4c130,0xe4c137,0xe4c129,0xe4c12e,0xe4c1d0,0xe4c1d7,0xe4c1c9,0xe4c1ce,0xe4de10,0xe4de17,0xe4de09,0xe4de0e,0xe4def0,0xe4def7,0xe4dee9,0xe4deee,0xe4dd30,0xe4dd37,0xe4dd29,0xe4dd2e,0xe4ddd0,0xe4ddd7,0xe4ddc9,0xe4ddce,0xe4a610,0xe4a617,0xe4a609,0xe4a60e,0xe4a6f0,0xe4a6f7,0xe4a6e9,0xe4a6ee,0xe4a530,0xe4a537,0xe4a529,0xe4a52e,0xe4a5d0,0xe4a5d7,0xe4a5c9,0xe4a5ce,0xe4ba10,0xe4ba17,0xe4ba09,0xe4ba0e,0xe4baf0,0xe4baf7,0xe4bae9,0xe4baee,0xe4b930,0xe4b937,0xe4b929,0xe4b92e,0xe4b9d0,0xe4b9d7,0xe4b9c9,0xe4b9ce,0xe74210,0xe74217,0xe74209,0xe7420e,0xe742f0,0xe742f7,0xe742e9,0xe742ee,0xe74130,0xe74137,0xe74129,0xe7412e,0xe741d0,0xe741d7,0xe741c9,0xe741ce,0xe75e10,0xe75e17,0xe75e09,0xe75e0e,0xe75ef0,0xe75ef7,0xe75ee9,0xe75eee,0xe75d30,0xe75d37,0xe75d29,0xe75d2e,0xe75dd0,0xe75dd7,0xe75dc9,0xe75dce,0xe72610,0xe72617,0xe72609,0xe7260e,0xe726f0,0xe726f7,0xe726e9,0xe726ee,0xe72530,0xe72537,0xe72529,0xe7252e,0xe725d0,0xe725d7,0xe725c9,0xe725ce,0xe73a10,0xe73a17,0xe73a09,0xe73a0e,0xe73af0,0xe73af7,0xe73ae9,0xe73aee,0xe73930,0xe73937,0xe73929,0xe7392e,0xe739d0,0xe739d7,0xe739c9]
+  },
+  ARUCO_MIP_36h12: {
+    nBits: 36,
+    tau: 12,
+    codeList: [0xd2b63a09d,0x6001134e5,0x1206fbe72,0xff8ad6cb4,0x85da9bc49,0xb461afe9c,0x6db51fe13,0x5248c541f,0x8f34503,0x8ea462ece,0xeac2be76d,0x1af615c44,0xb48a49f27,0x2e4e1283b,0x78b1f2fa8,0x27d34f57e,0x89222fff1,0x4c1669406,0xbf49b3511,0xdc191cd5d,0x11d7c3f85,0x16a130e35,0xe29f27eff,0x428d8ae0c,0x90d548477,0x2319cbc93,0xc3b0c3dfc,0x424bccc9,0x2a081d630,0x762743d96,0xd0645bf19,0xf38d7fd60,0xc6cbf9a10,0x3c1be7c65,0x276f75e63,0x4490a3f63,0xda60acd52,0x3cc68df59,0xab46f9dae,0x88d533d78,0xb6d62ec21,0xb3c02b646,0x22e56d408,0xac5f5770a,0xaaa993f66,0x4caa07c8d,0x5c9b4f7b0,0xaa9ef0e05,0x705c5750,0xac81f545e,0x735b91e74,0x8cc35cee4,0xe44694d04,0xb5e121de0,0x261017d0f,0xf1d439eb5,0xa1a33ac96,0x174c62c02,0x1ee27f716,0x8b1c5ece9,0x6a05b0c6a,0xd0568dfc,0x192d25e5f,0x1adbeccc8,0xcfec87f00,0xd0b9dde7a,0x88dcef81e,0x445681cb9,0xdbb2ffc83,0xa48d96df1,0xb72cc2e7d,0xc295b53f,0xf49832704,0x9968edc29,0x9e4e1af85,0x8683e2d1b,0x810b45c04,0x6ac44bfe2,0x645346615,0x3990bd598,0x1c9ed0f6a,0xc26729d65,0x83993f795,0x3ac05ac5d,0x357adff3b,0xd5c05565,0x2f547ef44,0x86c115041,0x640fd9e5f,0xce08bbcf7,0x109bb343e,0xc21435c92,0x35b4dfce4,0x459752cf2,0xec915b82c,0x51881eed0,0x2dda7dc97,0x2e0142144,0x42e890f99,0x9a8856527,0x8e80d9d80,0x891cbcf34,0x25dd82410,0x239551d34,0x8fe8f0c70,0x94106a970,0x82609b40c,0xfc9caf36,0x688181d11,0x718613c08,0xf1ab7629,0xa357bfc18,0x4c03b7a46,0x204dedce6,0xad6300d37,0x84cc4cd09,0x42160e5c4,0x87d2adfa8,0x7850e7749,0x4e750fc7c,0xbf2e5dfda,0xd88324da5,0x234b52f80,0x378204514,0xabdf2ad53,0x365e78ef9,0x49caa6ca2,0x3c39ddf3,0xc68c5385d,0x5bfcbbf67,0x623241e21,0xabc90d5cc,0x388c6fe85,0xda0e2d62d,0x10855dfe9,0x4d46efd6b,0x76ea12d61,0x9db377d3d,0xeed0efa71,0xe6ec3ae2f,0x441faee83,0xba19c8ff5,0x313035eab,0x6ce8f7625,0x880dab58d,0x8d3409e0d,0x2be92ee21,0xd60302c6c,0x469ffc724,0x87eebeed3,0x42587ef7a,0x7a8cc4e52,0x76a437650,0x999e41ef4,0x7d0969e42,0xc02baf46b,0x9259f3e47,0x2116a1dc0,0x9f2de4d84,0xeffac29,0x7b371ff8c,0x668339da9,0xd010aee3f,0x1cd00b4c0,0x95070fc3b,0xf84c9a770,0x38f863d76,0x3646ff045,0xce1b96412,0x7a5d45da8,0x14e00ef6c,0x5e95abfd8,0xb2e9cb729,0x36c47dd7,0xb8ee97c6b,0xe9e8f657,0xd4ad2ef1a,0x8811c7f32,0x47bde7c31,0x3adadfb64,0x6e5b28574,0x33e67cd91,0x2ab9fdd2d,0x8afa67f2b,0xe6a28fc5e,0x72049cdbd,0xae65dac12,0x1251a4526,0x1089ab841,0xe2f096ee0,0xb0caee573,0xfd6677e86,0x444b3f518,0xbe8b3a56a,0x680a75cfc,0xac02baea8,0x97d815e1c,0x1d4386e08,0x1a14f5b0e,0xe658a8d81,0xa3868efa7,0x3668a9673,0xe8fc53d85,0x2e2b7edd5,0x8b2470f13,0xf69795f32,0x4589ffc8e,0x2e2080c9c,0x64265f7d,0x3d714dd10,0x1692c6ef1,0x3e67f2f49,0x5041dad63,0x1a1503415,0x64c18c742,0xa72eec35,0x1f0f9dc60,0xa9559bc67,0xf32911d0d,0x21c0d4ffc,0xe01cef5b0,0x4e23a3520,0xaa4f04e49,0xe1c4fcc43,0x208e8f6e8,0x8486774a5,0x9e98c7558,0x2c59fb7dc,0x9446a4613,0x8292dcc2e,0x4d61631,0xd05527809,0xa0163852d,0x8f657f639,0xcca6c3e37,0xcb136bc7a,0xfc5a83e53,0x9aa44fc30,0xbdec1bd3c,0xe020b9f7c,0x4b8f35fb0,0xb8165f637,0x33dc88d69,0x10a2f7e4d,0xc8cb5ff53,0xde259ff6b,0x46d070dd4,0x32d3b9741,0x7075f1c04,0x4d58dbea0]
+  }
+};
+
+AR.Dictionary = function (dicName) {
+  this.codes = {};
+  this.codeList = [];
+  this.tau = 0;
+  this._initialize(dicName);
+};
+
+AR.Dictionary.prototype._initialize = function (dicName) {
+  this.codes = {};
+  this.codeList = [];
+  this.tau = 0;
+  this.nBits = 0;
+  this.markSize = 0;
+  this.dicName = dicName;
+  var dictionary = AR.DICTIONARIES[dicName];
+  if (!dictionary)
+    throw 'The dictionary "' + dicName + '" is not recognized.';
+  
+  this.nBits = dictionary.nBits;
+  this.markSize = Math.sqrt(dictionary.nBits) + 2;
+  for (var i = 0; i < dictionary.codeList.length; i++) {
+    var code = null;
+    if (typeof dictionary.codeList[i] === 'number')
+      code = this._hex2bin(dictionary.codeList[i], dictionary.nBits);
+    if (typeof dictionary.codeList[i] === 'string')
+      code = this._hex2bin(parseInt(dictionary.codeList[i], 16), dictionary.nBits);
+    if (Array.isArray(dictionary.codeList[i])) 
+      code = this._bytes2bin(dictionary.codeList[i], dictionary.nBits);
+    if (code === null) 
+      throw 'Invalid code ' + i + ' in dictionary ' + dicName + ': ' + JSON.stringify(dictionary.codeList[i]);
+    if (code.length != dictionary.nBits)
+      throw 'The code ' + i + ' in dictionary ' + dicName + ' is not ' +  dictionary.nBits + ' bits long but ' + code.length + ': ' + code;
+    this.codeList.push(code);
+    this.codes[code] = {
+      id: i
+    };
+  }
+  this.tau = dictionary.tau || this._calculateTau();
+};
+
+AR.Dictionary.prototype.find = function (bits) {
+  var val = '',
+    i, j;
+  for (i = 0; i < bits.length; i++) {
+    var bitRow = bits[i];
+    for (j = 0; j < bitRow.length; j++) {
+      val += bitRow[j];
+    }
+  }
+  var minFound = this.codes[val];
+  if (minFound)
+    return {
+      id: minFound.id,
+      distance: 0
+    };
+
+  for (i = 0; i < this.codeList.length; i++) {
+    var code = this.codeList[i];
+    var distance = this._hammingDistance(val, code);
+    if (this._hammingDistance(val, code) < this.tau) {
+      if (!minFound || minFound.distance > distance) {
+        minFound = {
+          id: this.codes[code].id,
+          distance: distance
+        };
+      }
+    }
+  }
+  return minFound;
+};
+
+AR.Dictionary.prototype._hex2bin = function (hex, nBits) {
+  return hex.toString(2).padStart(nBits, '0');
+};
+
+AR.Dictionary.prototype._bytes2bin = function (byteList, nBits) {
+  var bits = '', byte;
+  for (byte of byteList) {
+    bits += byte.toString(2).padStart(bits.length + 8 > nBits?nBits - bits.length:8, '0');
+  }
+  return bits;
+};
+
+AR.Dictionary.prototype._hammingDistance = function (str1, str2) {
+  if (str1.length != str2.length)
+    throw 'Hamming distance calculation require inputs of the same length';
+  var distance = 0,
+    i;
+  for (i = 0; i < str1.length; i++)
+    if (str1[i] !== str2[i])
+      distance += 1;
+  return distance;
+};
+
+AR.Dictionary.prototype._calculateTau = function () {
+  var tau = Number.MAX_VALUE;
+  for(var i=0;i<this.codeList.length;i++)
+    for(var j=i+1;j<this.codeList.length;j++) {
+      var distance = this._hammingDistance(this.codeList[i], this.codeList[j]);
+      tau = distance < tau ? distance : tau;
+    }
+  return tau;
+};
+
+AR.Dictionary.prototype.generateSVG = function (id) {
+  var code = this.codeList[id];
+  if (code == null)
+    throw 'The id "' + id + '" is not valid for the dictionary "' + this.dicName + '". ID must be between 0 and ' + (this.codeList.length-1) + ' included.';
+  var size = this.markSize - 2;
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+ (size+4) + ' ' + (size+4) + '">';
+  svg += '<rect x="0" y="0" width="' + (size+4) + '" height="' + (size+4) + '" fill="white"/>';
+  svg += '<rect x="1" y="1" width="' + (size+2) + '" height="' + (size+2) + '" fill="black"/>';
+  for(var y=0;y<size;y++) {
+    for(var x=0;x<size;x++) {
+      if (code[y*size+x]=='1') 
+        svg += '<rect x="' + (x+2) + '" y="' + (y+2) + '" width="1" height="1" fill="white"/>';
+    }
+  }
+  svg += '</svg>';
+  return svg;
+};
+
+AR.Marker = function (id, corners, hammingDistance) {
+  this.id = id;
+  this.corners = corners;
+  this.hammingDistance = hammingDistance;
+};
+
+AR.Detector = function (config) {
+  config = config || {};
+  this.grey = new CV.Image();
+  this.thres = new CV.Image();
+  this.homography = new CV.Image();
+  this.binary = [];
+  this.contours = [];
+  this.polys = [];
+  this.candidates = [];
+  config.dictionaryName = config.dictionaryName || 'ARUCO_MIP_36h12';
+  this.dictionary = new AR.Dictionary(config.dictionaryName);
+  this.dictionary.tau = config.maxHammingDistance != null ? config.maxHammingDistance : this.dictionary.tau;
+};
+
+AR.Detector.prototype.detectImage = function (width, height, data) {
+  return this.detect({
+    width: width,
+    height: height,
+    data: data
+  });
+};
+
+AR.Detector.prototype.detectStreamInit = function (width, height, callback) {
+  this.streamConfig = {};
+  this.streamConfig.width = width;
+  this.streamConfig.height = height;
+  this.streamConfig.imageSize = width * height * 4; //provided image must be a sequence of rgba bytes (4 bytes represent a pixel)
+  this.streamConfig.index = 0;
+  this.streamConfig.imageData = new Uint8ClampedArray(this.streamConfig.imageSize);
+  this.streamConfig.callback = callback || function (image, markerList) {};
+};
+
+//accept data chunks of different sizes
+AR.Detector.prototype.detectStream = function (data) {
+  for (var i = 0; i < data.length; i++) {
+    this.streamConfig.imageData[this.streamConfig.index] = data[i];
+    this.streamConfig.index = (this.streamConfig.index + 1) % this.streamConfig.imageSize;
+    if (this.streamConfig.index == 0) {
+      var image = {
+        width: this.streamConfig.width,
+        height: this.streamConfig.height,
+        data: this.streamConfig.imageData
+      };
+      var markerList = this.detect(image);
+      this.streamConfig.callback(image, markerList);
+    }
+  }
+};
+
+AR.Detector.prototype.detectMJPEGStreamInit = function (width, height, callback, decoderFn) {
+  this.mjpeg = {
+    decoderFn: decoderFn,
+    chunks: [],
+    SOI: [0xff, 0xd8],
+    EOI: [0xff, 0xd9]
+  };
+  this.detectStreamInit(width, height, callback);
+};
+
+AR.Detector.prototype.detectMJPEGStream = function (chunk) {
+  var eoiPos = chunk.findIndex(function (element, index, array) {
+    return this.mjpeg.EOI[0] == element && array.length > index + 1 && this.mjpeg.EOI[1] == array[index + 1];
+  });
+  var soiPos = chunk.findIndex(function (element, index, array) {
+    return this.mjpeg.SOI[0] == element && array.length > index + 1 && this.mjpeg.SOI[1] == array[index + 1];
+  });
+
+  if (eoiPos === -1) {
+    this.mjpeg.chunks.push(chunk);
+  } else {
+    var part1 = chunk.slice(0, eoiPos + 2);
+    if (part1.length) {
+      this.mjpeg.chunks.push(part1);
+    }
+    if (this.mjpeg.chunks.length) {
+      var jpegImage = this.mjpeg.chunks.flat();
+      var rgba = this.mjpeg.decoderFn(jpegImage);
+      this.detectStream(rgba);
+    }
+    this.mjpeg.chunks = [];
+  }
+  if (soiPos > -1) {
+    this.mjpeg.chunks = [];
+    this.mjpeg.chunks.push(chunk.slice(soiPos));
+  }
+};
+
+AR.Detector.prototype.detect = function (image) {
+  CV.grayscale(image, this.grey);
+  CV.adaptiveThreshold(this.grey, this.thres, 2, 7);
+
+  this.contours = CV.findContours(this.thres, this.binary);
+  //Scale Fix: https://stackoverflow.com/questions/35936397/marker-detection-on-paper-sheet-using-javascript
+  //this.candidates = this.findCandidates(this.contours, image.width * 0.20, 0.05, 10);
+  this.candidates = this.findCandidates(this.contours, image.width * 0.01, 0.05, 10);
+  this.candidates = this.clockwiseCorners(this.candidates);
+  this.candidates = this.notTooNear(this.candidates, 10);
+
+  return this.findMarkers(this.grey, this.candidates, 49);
+};
+
+AR.Detector.prototype.findCandidates = function (contours, minSize, epsilon, minLength) {
+  var candidates = [],
+    len = contours.length,
+    contour, poly, i;
+
+  this.polys = [];
+
+  for (i = 0; i < len; ++i) {
+    contour = contours[i];
+
+    if (contour.length >= minSize) {
+      poly = CV.approxPolyDP(contour, contour.length * epsilon);
+
+      this.polys.push(poly);
+
+      if ((4 === poly.length) && (CV.isContourConvex(poly))) {
+
+        if (CV.minEdgeLength(poly) >= minLength) {
+          candidates.push(poly);
+        }
+      }
+    }
+  }
+
+  return candidates;
+};
+
+AR.Detector.prototype.clockwiseCorners = function (candidates) {
+  var len = candidates.length,
+    dx1, dx2, dy1, dy2, swap, i;
+
+  for (i = 0; i < len; ++i) {
+    dx1 = candidates[i][1].x - candidates[i][0].x;
+    dy1 = candidates[i][1].y - candidates[i][0].y;
+    dx2 = candidates[i][2].x - candidates[i][0].x;
+    dy2 = candidates[i][2].y - candidates[i][0].y;
+
+    if ((dx1 * dy2 - dy1 * dx2) < 0) {
+      swap = candidates[i][1];
+      candidates[i][1] = candidates[i][3];
+      candidates[i][3] = swap;
+    }
+  }
+
+  return candidates;
+};
+
+AR.Detector.prototype.notTooNear = function (candidates, minDist) {
+  var notTooNear = [],
+    len = candidates.length,
+    dist, dx, dy, i, j, k;
+
+  for (i = 0; i < len; ++i) {
+
+    for (j = i + 1; j < len; ++j) {
+      dist = 0;
+
+      for (k = 0; k < 4; ++k) {
+        dx = candidates[i][k].x - candidates[j][k].x;
+        dy = candidates[i][k].y - candidates[j][k].y;
+
+        dist += dx * dx + dy * dy;
+      }
+
+      if ((dist / 4) < (minDist * minDist)) {
+
+        if (CV.perimeter(candidates[i]) < CV.perimeter(candidates[j])) {
+          candidates[i].tooNear = true;
+        } else {
+          candidates[j].tooNear = true;
+        }
+      }
+    }
+  }
+
+  for (i = 0; i < len; ++i) {
+    if (!candidates[i].tooNear) {
+      notTooNear.push(candidates[i]);
+    }
+  }
+
+  return notTooNear;
+};
+
+AR.Detector.prototype.findMarkers = function (imageSrc, candidates, warpSize) {
+  var markers = [],
+    len = candidates.length,
+    candidate, marker, i;
+
+  for (i = 0; i < len; ++i) {
+    candidate = candidates[i];
+
+    CV.warp(imageSrc, this.homography, candidate, warpSize);
+
+    CV.threshold(this.homography, this.homography, CV.otsu(this.homography));
+
+    marker = this.getMarker(this.homography, candidate);
+    if (marker) {
+      markers.push(marker);
+    }
+  }
+
+  return markers;
+};
+
+AR.Detector.prototype.getMarker = function (imageSrc, candidate) {
+  var markSize = this.dictionary.markSize;
+  var width = (imageSrc.width / markSize) >>> 0,
+    minZero = (width * width) >> 1,
+    bits = [],
+    rotations = [],
+    square, inc, i, j;
+
+  for (i = 0; i < markSize; ++i) {
+    inc = (0 === i || (markSize - 1) === i) ? 1 : (markSize - 1);
+
+    for (j = 0; j < markSize; j += inc) {
+      square = {
+        x: j * width,
+        y: i * width,
+        width: width,
+        height: width
+      };
+      if (CV.countNonZero(imageSrc, square) > minZero) {
+        return null;
+      }
+    }
+  }
+
+  for (i = 0; i < markSize - 2; ++i) {
+    bits[i] = [];
+
+    for (j = 0; j < markSize - 2; ++j) {
+      square = {
+        x: (j + 1) * width,
+        y: (i + 1) * width,
+        width: width,
+        height: width
+      };
+
+      bits[i][j] = CV.countNonZero(imageSrc, square) > minZero ? 1 : 0;
+    }
+  }
+
+  rotations[0] = bits;
+
+  var foundMin = null;
+  var rot = 0;
+  for (i = 0; i < 4; i++) {
+    var found = this.dictionary.find(rotations[i]);
+    if (found && (foundMin === null || found.distance < foundMin.distance)) {
+      foundMin = found;
+      rot = i;
+      if (foundMin.distance === 0)
+        break;
+    }
+    rotations[i + 1] = this.rotate(rotations[i]);
+  }
+
+  if (foundMin)
+    return new AR.Marker(foundMin.id, this.rotate2(candidate, 4 - rot), foundMin.distance);
+
+  return null;
+};
+
+AR.Detector.prototype.rotate = function (src) {
+  var dst = [],
+    len = src.length,
+    i, j;
+
+  for (i = 0; i < len; ++i) {
+    dst[i] = [];
+    for (j = 0; j < src[i].length; ++j) {
+      dst[i][j] = src[src[i].length - j - 1][i];
+    }
+  }
+
+  return dst;
+};
+
+AR.Detector.prototype.rotate2 = function (src, rotation) {
+  var dst = [],
+    len = src.length,
+    i;
+
+  for (i = 0; i < len; ++i) {
+    dst[i] = src[(rotation + i) % len];
+  }
+
+  return dst;
+};
+
+</script>
+<script>
+//First 50 codes of OpenCV DICT_4X4_1000, which are exactly DICT_4X4_50.
+AR.DICTIONARIES['SHEET50'] = { nBits: 16, tau: 1, codeList: [[181,50],[15,154],[51,45],[153,70],[84,158],[121,205],[158,46],[196,242],[254,218],[207,86],[249,145],[17,167],[14,183],[42,15],[36,177],[38,62],[70,101],[102,0],[108,94],[118,175],[134,139],[176,43],[204,213],[221,130],[254,71],[148,113],[172,228],[165,84],[33,35],[52,111],[68,21],[87,178],[158,207],[240,203],[8,174],[9,41],[24,117],[4,255],[13,246],[28,90],[23,24],[42,40],[50,140],[56,178],[36,232],[46,235],[45,63],[75,100],[80,46],[80,19]] };
+</script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* Marker geometry from the printed PDF: id -> [x, y, side] in mm, origin top-left of the sheet. */
+  var MARK = {
+    0: [10, 10, 35], 1: [165, 10, 35], 2: [165, 252, 35], 3: [10, 252, 35],
+    4: [10, 10, 25], 5: [92.5, 10, 25], 6: [175, 10, 25], 7: [175, 136, 25],
+    8: [175, 262, 25], 9: [92.5, 262, 25], 10: [10, 262, 25], 11: [10, 136, 25],
+    12: [3, 3, 12], 13: [125, 3, 12], 14: [125, 165, 12], 15: [3, 165, 12]   /* compact frame, mm from its outer top-left */
+  };
+  var OUTER = [[10, 10], [200, 10], [200, 287], [10, 287]];   // outer corners of the marker frame on both sheets
+  var OUTER_C = [[3, 3], [137, 3], [137, 177], [3, 177]];     // outer corners of the compact frame's markers
+  var COLORS = ['#ffd23f', '#3ddc97', '#4cc9f0', '#ff7a45', '#c77dff', '#ff6b9a'];
+
+  var stage = $('stage'), canvas = $('cv'), ctx = canvas.getContext('2d');
+  var loupe = $('loupe'), lctx = loupe.getContext('2d');
+  var img = null, gray = null;
+  var view = { s: 1, tx: 0, ty: 0 };
+  var calib = null, manual = null, tool = null, active = null;
+  var meas = [], nextNum = { dist: 1, path: 1, area: 1, angle: 1 };
+  var dpr = window.devicePixelRatio || 1;
+
+  /* ---------- maths ---------- */
+  function apply(H, x, y) {
+    var w = H[2][0] * x + H[2][1] * y + H[2][2];
+    return [(H[0][0] * x + H[0][1] * y + H[0][2]) / w, (H[1][0] * x + H[1][1] * y + H[1][2]) / w];
+  }
+  function mul3(a, b) {
+    var r = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    for (var i = 0; i < 3; i++) for (var j = 0; j < 3; j++) for (var k = 0; k < 3; k++) r[i][j] += a[i][k] * b[k][j];
+    return r;
+  }
+  function inv3(m) {
+    var a = m[0][0], b = m[0][1], c = m[0][2], d = m[1][0], e = m[1][1], f = m[1][2], g = m[2][0], h = m[2][1], i = m[2][2];
+    var c00 = e * i - f * h, c01 = -(d * i - f * g), c02 = d * h - e * g;
+    var c10 = -(b * i - c * h), c11 = a * i - c * g, c12 = -(a * h - b * g);
+    var c20 = b * f - c * e, c21 = -(a * f - c * d), c22 = a * e - b * d;
+    var det = a * c00 + b * c01 + c * c02;
+    return [[c00 / det, c10 / det, c20 / det], [c01 / det, c11 / det, c21 / det], [c02 / det, c12 / det, c22 / det]];
+  }
+  function normT(pts) {
+    var n = pts.length, cx = 0, cy = 0, d = 0, s;
+    pts.forEach(function (p) { cx += p[0]; cy += p[1]; }); cx /= n; cy /= n;
+    pts.forEach(function (p) { d += Math.hypot(p[0] - cx, p[1] - cy); }); d /= n;
+    s = Math.SQRT2 / (d || 1);
+    return [[s, 0, -s * cx], [0, s, -s * cy], [0, 0, 1]];
+  }
+  /* Least-squares homography src -> dst (Hartley-normalised normal equations). */
+  function solveH(src, dst) {
+    var Ts = normT(src), Td = normT(dst), N = 8, A = [], b = new Array(N).fill(0), i, j, k;
+    for (i = 0; i < N; i++) A.push(new Array(N).fill(0));
+    function acc(r, v) { for (var p = 0; p < N; p++) { b[p] += r[p] * v; for (var q = 0; q < N; q++) A[p][q] += r[p] * r[q]; } }
+    for (k = 0; k < src.length; k++) {
+      var s = apply(Ts, src[k][0], src[k][1]), t = apply(Td, dst[k][0], dst[k][1]);
+      acc([s[0], s[1], 1, 0, 0, 0, -t[0] * s[0], -t[0] * s[1]], t[0]);
+      acc([0, 0, 0, s[0], s[1], 1, -t[1] * s[0], -t[1] * s[1]], t[1]);
+    }
+    for (i = 0; i < N; i++) {                       // Gaussian elimination, partial pivoting
+      var piv = i;
+      for (j = i + 1; j < N; j++) if (Math.abs(A[j][i]) > Math.abs(A[piv][i])) piv = j;
+      var tmp = A[i]; A[i] = A[piv]; A[piv] = tmp; var tb = b[i]; b[i] = b[piv]; b[piv] = tb;
+      if (Math.abs(A[i][i]) < 1e-12) return null;
+      for (j = i + 1; j < N; j++) {
+        var f = A[j][i] / A[i][i];
+        for (k = i; k < N; k++) A[j][k] -= f * A[i][k];
+        b[j] -= f * b[i];
+      }
+    }
+    var h = new Array(N).fill(0);
+    for (i = N - 1; i >= 0; i--) {
+      var sum = b[i];
+      for (j = i + 1; j < N; j++) sum -= A[i][j] * h[j];
+      h[i] = sum / A[i][i];
+    }
+    var Hn = [[h[0], h[1], h[2]], [h[3], h[4], h[5]], [h[6], h[7], 1]];
+    return mul3(inv3(Td), mul3(Hn, Ts));
+  }
+
+  /* ---------- corner refinement: fit straight lines to the marker edges in the full-resolution photo ---------- */
+  function sampleGray(x, y) {
+    var w = img.w, h = img.h;
+    if (x < 0 || y < 0 || x >= w - 1 || y >= h - 1) return NaN;
+    var x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0, i = y0 * w + x0;
+    return gray[i] * (1 - fx) * (1 - fy) + gray[i + 1] * fx * (1 - fy) + gray[i + w] * (1 - fx) * fy + gray[i + w + 1] * fx * fy;
+  }
+  function fitLine(pts) {
+    var n = pts.length, cx = 0, cy = 0, sxx = 0, sxy = 0, syy = 0;
+    pts.forEach(function (p) { cx += p[0]; cy += p[1]; }); cx /= n; cy /= n;
+    pts.forEach(function (p) { var dx = p[0] - cx, dy = p[1] - cy; sxx += dx * dx; sxy += dx * dy; syy += dy * dy; });
+    var ang = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+    return { x: cx, y: cy, dx: Math.cos(ang), dy: Math.sin(ang) };
+  }
+  function lineDist(L, p) { return Math.abs((p[0] - L.x) * L.dy - (p[1] - L.y) * L.dx); }
+  function intersect(a, b) {
+    var det = a.dx * (-b.dy) - a.dy * (-b.dx);
+    if (Math.abs(det) < 1e-9) return null;
+    var rx = b.x - a.x, ry = b.y - a.y;
+    var t = (rx * (-b.dy) - ry * (-b.dx)) / det;
+    return [a.x + a.dx * t, a.y + a.dy * t];
+  }
+  function refineCorners(c) {
+    var lines = [], e, k, j;
+    for (e = 0; e < 4; e++) {
+      var p0 = c[e], p1 = c[(e + 1) % 4], dx = p1[0] - p0[0], dy = p1[1] - p0[1], len = Math.hypot(dx, dy);
+      if (len < 24) return null;
+      var nx = -dy / len, ny = dx / len, R = Math.max(3, Math.min(10, len * 0.06)), step = 0.5, n = Math.round(2 * R / step) + 1, pts = [];
+      for (k = 0; k < 9; k++) {
+        var t = 0.15 + 0.7 * k / 8, bx = p0[0] + dx * t, by = p0[1] + dy * t, prof = [];
+        for (j = 0; j < n; j++) { var s = -R + j * step; prof.push(sampleGray(bx + nx * s, by + ny * s)); }
+        var G = [], best = -1, bv = 0;
+        for (j = 1; j < n - 1; j++) { G[j] = Math.abs(prof[j + 1] - prof[j - 1]); if (G[j] > bv) { bv = G[j]; best = j; } }
+        if (best < 2 || best > n - 3 || !(bv > 12)) continue;
+        var y0 = G[best - 1], y1 = G[best], y2 = G[best + 1], den = y0 - 2 * y1 + y2;
+        var delta = den !== 0 ? 0.5 * (y0 - y2) / den : 0;
+        var so = -R + (best + Math.max(-1, Math.min(1, delta))) * step;
+        pts.push([bx + nx * so, by + ny * so]);
+      }
+      if (pts.length < 5) return null;
+      var L = fitLine(pts), res = pts.map(function (p) { return lineDist(L, p); });
+      var med = res.slice().sort(function (a, b) { return a - b; })[res.length >> 1];
+      var keep = pts.filter(function (p, i) { return res[i] <= Math.max(0.7, 3 * med); });
+      if (keep.length >= 5) L = fitLine(keep);
+      lines.push(L);
+    }
+    var out = [];
+    for (e = 0; e < 4; e++) {
+      var q = intersect(lines[(e + 3) % 4], lines[e]);
+      if (!q || Math.hypot(q[0] - c[e][0], q[1] - c[e][1]) > Math.max(5, 0.04 * Math.hypot(c[1][0] - c[0][0], c[1][1] - c[0][1]))) return null;
+      out.push(q);
+    }
+    return out;
+  }
+
+  /* ---------- detection and calibration ---------- */
+  var detector = null;
+  function getDetector() {
+    if (!detector) detector = new AR.Detector({ dictionaryName: 'SHEET50', maxHammingDistance: 1 });
+    return detector;
+  }
+  function calMode() { var r = document.querySelector('input[name="cmode"]:checked'); return r ? r.value : 'sheet'; }
+  function detectMarkers(single, wantId) {
+    var sizes = (single || calMode() === 'frame') ? [2400, 4096, 1600] : [1600, 2400, 1000], tried = {}, best = [], bestSc = 1;
+    for (var si = 0; si < sizes.length; si++) {
+      var sc = Math.min(1, sizes[si] / Math.max(img.w, img.h)), key = sc.toFixed(3);
+      if (tried[key]) continue; tried[key] = 1;
+      var c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.w * sc)); c.height = Math.max(1, Math.round(img.h * sc));
+      var g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img.canvas, 0, 0, c.width, c.height);
+      var ms = getDetector().detect(g.getImageData(0, 0, c.width, c.height));
+      var seen = {}, uniq = [];
+      ms.forEach(function (m) {
+        if (seen[m.id]) return;
+        if (single ? (wantId == null || m.id === wantId) : (!!MARK[m.id] && (m.id >= 12) === (calMode() === 'frame'))) { seen[m.id] = 1; uniq.push(m); }
+      });
+      var set = uniq;
+      if (!single && calMode() !== 'frame') {
+        var a = uniq.filter(function (m) { return m.id <= 3; }), b = uniq.filter(function (m) { return m.id >= 4; });
+        set = a.length >= b.length ? a : b;
+      }
+      if (set.length > best.length) { best = set; bestSc = c.width / img.w; }
+      if (best.length >= (single ? 1 : 4)) break;
+    }
+    return { markers: best, scale: bestSc };
+  }
+  function mean4(c) {
+    var s = 0; for (var i = 0; i < 4; i++) s += Math.hypot(c[(i + 1) % 4][0] - c[i][0], c[(i + 1) % 4][1] - c[i][1]);
+    return s / 4;
+  }
+  function calibrateSingle() {
+    var side = parseFloat($('mkSize').value), idTxt = $('mkId').value.trim(), want = idTxt === '' ? null : parseInt(idTxt, 10);
+    if (!(side > 0)) return { fail: -2 };
+    var det = detectMarkers(true, want);
+    if (!det.markers.length) return { fail: 0, single: true, want: want };
+    var list = det.markers.map(function (m) {
+      var cf = m.corners.map(function (p) { return [p.x / det.scale, p.y / det.scale]; });
+      var r = refineCorners(cf); if (r) cf = r;
+      return { id: m.id, corners: cf, px: mean4(cf), refined: !!r };
+    }).sort(function (p, q) { return q.px - p.px; });
+    var m = list[0], H = solveH(m.corners, [[0, 0], [side, 0], [side, side], [0, side]]);
+    if (!H) return { fail: 0, single: true, want: want };
+    return { H: H, rms: 0, max: 0, n: 4, markers: [{ id: m.id, corners: m.corners }], mode: 'single', side: side, px: m.px, refined: m.refined ? 1 : 0, found: list.length };
+  }
+  function calibrateAuto() {
+    if (calMode() === 'single') return calibrateSingle();
+    var det = detectMarkers();
+    if (det.markers.length < (calMode() === 'frame' ? 3 : 2)) return { fail: det.markers.length };
+    var markers = [], src = [], dst = [], refined = 0;
+    det.markers.forEach(function (m) {
+      var cf = m.corners.map(function (p) { return [p.x / det.scale, p.y / det.scale]; });
+      var r = refineCorners(cf); if (r) { cf = r; refined++; }
+      markers.push({ id: m.id, corners: cf });
+      var mm = MARK[m.id], x = mm[0], y = mm[1], s = mm[2], world = [[x, y], [x + s, y], [x + s, y + s], [x, y + s]];
+      for (var i = 0; i < 4; i++) { src.push(cf[i]); dst.push(world[i]); }
+    });
+    var H = solveH(src, dst);
+    if (!H) return { fail: det.markers.length };
+    var se = 0, mx = 0;
+    src.forEach(function (p, i) { var q = apply(H, p[0], p[1]), e = Math.hypot(q[0] - dst[i][0], q[1] - dst[i][1]); se += e * e; if (e > mx) mx = e; });
+    return { H: H, rms: Math.sqrt(se / src.length), max: mx, n: src.length, markers: markers, mode: 'auto', refined: refined };
+  }
+  function calibrateManual(pts) {
+    var side = parseFloat($('mkSize').value), single = calMode() === 'single' && side > 0;
+    var H = solveH(pts, single ? [[0, 0], [side, 0], [side, side], [0, side]] : (calMode() === 'frame' ? OUTER_C : OUTER));
+    return H ? { H: H, rms: 0, max: 0, n: 4, markers: [], mode: 'manual', side: single ? side : 0 } : null;
+  }
+
+  /* ---------- measurements ---------- */
+  function toMM(p) { return apply(calib.H, p[0], p[1]); }
+  function fmt(v, d) { return v.toFixed(d); }
+  function compute(type, pts) {
+    if (!calib) return null;
+    var m = pts.map(toMM), i;
+    if (type === 'dist') {
+      if (m.length < 2) return null;
+      var d = Math.hypot(m[1][0] - m[0][0], m[1][1] - m[0][1]);
+      return { num: d, value: fmt(d, 1) + ' mm', sub: fmt(d / 10, 2) + ' cm', unit: 'mm' };
+    }
+    if (type === 'path') {
+      if (m.length < 2) return null;
+      var L = 0; for (i = 1; i < m.length; i++) L += Math.hypot(m[i][0] - m[i - 1][0], m[i][1] - m[i - 1][1]);
+      return { num: L, value: fmt(L, 1) + ' mm', sub: fmt(L / 10, 2) + ' cm along ' + (m.length - 1) + ' segments', unit: 'mm' };
+    }
+    if (type === 'area') {
+      if (m.length < 3) return null;
+      var A = 0, P = 0;
+      for (i = 0; i < m.length; i++) {
+        var a = m[i], b = m[(i + 1) % m.length];
+        A += a[0] * b[1] - b[0] * a[1]; P += Math.hypot(b[0] - a[0], b[1] - a[1]);
+      }
+      A = Math.abs(A) / 2;
+      return { num: A, value: Math.round(A) + ' mm²', sub: fmt(A / 100, 2) + ' cm², perimeter ' + fmt(P, 1) + ' mm', unit: 'mm2', extra: P };
+    }
+    if (type === 'angle') {
+      if (m.length < 3) return null;
+      var v1 = [m[0][0] - m[1][0], m[0][1] - m[1][1]], v2 = [m[2][0] - m[1][0], m[2][1] - m[1][1]];
+      var cos = (v1[0] * v2[0] + v1[1] * v2[1]) / (Math.hypot(v1[0], v1[1]) * Math.hypot(v2[0], v2[1]));
+      var deg = Math.acos(Math.max(-1, Math.min(1, cos))) * 180 / Math.PI;
+      return { num: deg, value: fmt(deg, 1) + '°', sub: 'angle at the middle point', unit: 'deg' };
+    }
+    return null;
+  }
+  var NAMES = { dist: 'Distance', path: 'Path', area: 'Area', angle: 'Angle' };
+  function need(type) { return { dist: 2, angle: 3, path: 2, area: 3 }[type]; }
+
+  /* ---------- view ---------- */
+  function resizeCanvas() {
+    dpr = window.devicePixelRatio || 1;
+    var W = stage.clientWidth, H = stage.clientHeight;
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    if (img && !view.userSet) fitView();
+    schedule();
+  }
+  function fitView() {
+    if (!img) return;
+    var W = stage.clientWidth, H = stage.clientHeight, s = Math.min(W / img.w, H / img.h) * 0.97;
+    view.s = s; view.tx = (W - img.w * s) / 2; view.ty = (H - img.h * s) / 2; view.fit = s; view.userSet = false;
+    schedule();
+  }
+  function zoomAt(f, cx, cy) {
+    var ns = Math.max((view.fit || 0.05) * 0.6, Math.min(60, view.s * f)), r = ns / view.s;
+    view.tx = cx - (cx - view.tx) * r; view.ty = cy - (cy - view.ty) * r; view.s = ns; view.userSet = true; schedule();
+  }
+  function toImg(x, y) { return [(x - view.tx) / view.s, (y - view.ty) / view.s]; }
+  var raf = 0;
+  function schedule() { if (!raf) raf = requestAnimationFrame(function () { raf = 0; render(); }); }
+
+  /* ---------- drawing ---------- */
+  function halo(g, text, x, y, k) {
+    g.font = '600 ' + (13 * k) + 'px "IBM Plex Sans", system-ui, sans-serif';
+    g.lineWidth = 3.5 * k; g.strokeStyle = 'rgba(10,16,32,0.9)'; g.lineJoin = 'round';
+    g.strokeText(text, x, y); g.fillStyle = '#fff'; g.fillText(text, x, y);
+  }
+  function drawMeas(g, P, m, color, k, isActive) {
+    var q = m.pts.map(P), i;
+    g.lineWidth = 2 * k; g.strokeStyle = color; g.setLineDash(isActive ? [6 * k, 4 * k] : []);
+    if (q.length > 1) {
+      g.beginPath(); q.forEach(function (p, j) { if (j) g.lineTo(p[0], p[1]); else g.moveTo(p[0], p[1]); });
+      if (m.type === 'area' && q.length > 2) g.closePath();
+      g.stroke();
+      if (m.type === 'area' && q.length > 2) { g.globalAlpha = 0.16; g.fillStyle = color; g.fill(); g.globalAlpha = 1; }
+    }
+    g.setLineDash([]);
+    q.forEach(function (p) {
+      g.beginPath(); g.arc(p[0], p[1], 4.5 * k, 0, 6.2832); g.fillStyle = '#fff'; g.fill();
+      g.lineWidth = 1.6 * k; g.strokeStyle = color; g.stroke();
+    });
+    var r = compute(m.type, m.pts);
+    if (r && q.length) {
+      var lx, ly;
+      if (m.type === 'dist') { lx = (q[0][0] + q[1][0]) / 2; ly = (q[0][1] + q[1][1]) / 2; }
+      else if (m.type === 'angle') { lx = q[1][0]; ly = q[1][1]; }
+      else if (m.type === 'area') { lx = 0; ly = 0; q.forEach(function (p) { lx += p[0]; ly += p[1]; }); lx /= q.length; ly /= q.length; }
+      else { lx = q[q.length - 1][0]; ly = q[q.length - 1][1]; }
+      g.textAlign = 'center'; g.textBaseline = 'bottom';
+      halo(g, r.value, lx, ly - 9 * k, k);
+    }
+  }
+  function drawOverlays(g, s, tx, ty, k) {
+    function P(p) { return [p[0] * s + tx, p[1] * s + ty]; }
+    if (calib && calib.markers) {
+      g.lineWidth = 1.5 * k; g.strokeStyle = 'rgba(61,220,151,0.9)';
+      calib.markers.forEach(function (m) {
+        var q = m.corners.map(P);
+        g.beginPath(); q.forEach(function (p, i) { if (i) g.lineTo(p[0], p[1]); else g.moveTo(p[0], p[1]); }); g.closePath(); g.stroke();
+        g.textAlign = 'left'; g.textBaseline = 'top'; halo(g, 'ID ' + m.id, q[0][0] + 4 * k, q[0][1] + 4 * k, k * 0.85);
+      });
+    }
+    if (manual) {
+      var labels = ['TL', 'TR', 'BR', 'BL'];
+      manual.pts.forEach(function (p, i) {
+        var q = P(p);
+        g.beginPath(); g.arc(q[0], q[1], 5 * k, 0, 6.2832); g.fillStyle = '#3ddc97'; g.fill(); g.lineWidth = 1.6 * k; g.strokeStyle = '#0a1020'; g.stroke();
+        g.textAlign = 'left'; g.textBaseline = 'bottom'; halo(g, labels[i], q[0] + 8 * k, q[1] - 6 * k, k);
+      });
+    }
+    meas.forEach(function (m, i) { drawMeas(g, P, m, COLORS[i % COLORS.length], k, false); });
+    if (active && active.pts.length) drawMeas(g, P, active, '#ffffff', k, true);
+  }
+  function render() {
+    var W = stage.clientWidth, H = stage.clientHeight;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    if (!img) return;
+    ctx.imageSmoothingEnabled = view.s < 3;
+    ctx.drawImage(img.canvas, view.tx, view.ty, img.w * view.s, img.h * view.s);
+    drawOverlays(ctx, view.s, view.tx, view.ty, 1);
+  }
+
+  /* ---------- UI state ---------- */
+  var banner = $('banner'), toolBtns = { dist: $('tDist'), path: $('tPath'), area: $('tArea'), angle: $('tAngle') };
+  function setBanner(t) { banner.textContent = t || ''; banner.hidden = !t; }
+  function updateUI() {
+    var has = !!img, cal = !!calib;
+    Object.keys(toolBtns).forEach(function (k) { toolBtns[k].disabled = !cal; toolBtns[k].setAttribute('aria-pressed', String(tool === k)); });
+    $('zIn').disabled = $('zOut').disabled = $('zFit').disabled = !has;
+    $('bDetect').disabled = !has; $('bManual').disabled = !has;
+    $('bFinish').disabled = !(active && (tool === 'path' || tool === 'area') && active.pts.length >= need(tool));
+    $('bUndo').disabled = !((active && active.pts.length) || (manual && manual.pts.length) || meas.length);
+    $('bCopy').disabled = !meas.length; $('bClear').disabled = !meas.length;
+    $('empty').hidden = has;
+    var msg = '';
+    if (manual) {
+      var n = manual.pts.length;
+      msg = n < 4 ? (calMode() === 'single'
+        ? ['Click the marker’s top-left corner (1 of 4)', 'Click the marker’s top-right corner (2 of 4)', 'Click the marker’s bottom-right corner (3 of 4)', 'Click the marker’s bottom-left corner (4 of 4)']
+        : ['Click the outer top-left corner of the top-left marker (1 of 4)', 'Click the outer top-right corner of the top-right marker (2 of 4)',
+          'Click the outer bottom-right corner of the bottom-right marker (3 of 4)', 'Click the outer bottom-left corner of the bottom-left marker (4 of 4)'])[n] : '';
+    } else if (tool && calib) {
+      var c = active ? active.pts.length : 0;
+      if (tool === 'dist') msg = c === 0 ? 'Distance: click the first point.' : 'Distance: click the second point.';
+      if (tool === 'angle') msg = ['Angle: click a point on the first arm.', 'Angle: click the vertex (the corner of the angle).', 'Angle: click a point on the second arm.'][Math.min(c, 2)];
+      if (tool === 'path') msg = 'Path: click along the line, then Finish or press Enter.' + (c ? ' ' + c + ' points.' : '');
+      if (tool === 'area') msg = 'Area: click around the outline, then Finish or press Enter.' + (c ? ' ' + c + ' points.' : '');
+    } else if (img && !calib) msg = 'Not calibrated yet. Use Detect markers again, or Calibrate by 4 corners.';
+    setBanner(msg);
+    schedule();
+  }
+  function setCal(kind, title, detail) {
+    var s = $('calStatus'); s.className = 'status' + (kind ? ' ' + kind : '');
+    $('calTitle').textContent = title; $('calDetail').textContent = detail;
+  }
+  function sheetName(ids) { return ids[0] >= 12 ? 'Compact frame' : (ids.every(function (i) { return i <= 3; }) ? 'Sheet A' : 'Sheet B'); }
+  function afterCalibration() {
+    if (!calib) return;
+    if (calib.mode === 'single') {
+      var mmpx = calib.side / calib.px, grade = calib.px < 120 ? 'warn' : 'ok';
+      setCal(grade, 'Calibrated from 1 marker (ID ' + calib.markers[0].id + ')',
+        'The marker is ' + Math.round(calib.px) + ' px across, so one pixel is about ' + fmt(mmpx, 2) + ' mm. With one marker, error grows with distance from it and with camera tilt, and shrinks as the marker gets larger in the photo. ' +
+        (calib.px < 120 ? 'This marker is small in the photo, so measurements far from it are unreliable. Move closer or use a larger marker. '
+          : calib.px < 200 ? 'Measurements near the marker are good. Check long distances against a known length. ' : 'A marker this size gives good results over a foot-length distance when the camera is square-on. ') +
+        (calib.found > 1 ? calib.found + ' markers found, using the largest.' : ''));
+    } else if (calib.mode === 'auto') {
+      var ids = calib.markers.map(function (m) { return m.id; }).sort(function (a, b) { return a - b; });
+      var warn = calib.rms > 0.8 || calib.markers.length < 3;
+      setCal(warn ? 'warn' : 'ok', 'Calibrated from ' + calib.markers.length + ' markers',
+        sheetName(ids) + ', IDs ' + ids.join(', ') + '. Residual ' + fmt(calib.rms, 2) + ' mm RMS, ' + fmt(calib.max, 2) + ' mm worst corner.' +
+        (calib.markers.length < 3 ? ' Few markers found, so accuracy falls away from them.' : '') +
+        (calib.rms > 0.8 ? ' Residual is high. Check the sheet is flat and unobstructed.' : '') +
+        ' Edges refined on ' + calib.refined + ' of ' + calib.markers.length + '.');
+    } else {
+      setCal('ok', 'Calibrated by 4 corners', calib.side ? 'Your four clicks define a ' + calib.side + ' mm square. Accuracy depends on how precisely you placed them, so zoom in first.'
+        : calMode() === 'frame' ? 'Your four clicks define the 134 by 174 mm span of the compact frame. Accuracy depends on how precisely you placed them, so zoom in first.'
+        : 'Your four clicks define the 190 by 277 mm marker frame. Accuracy depends on how precisely you placed them, so zoom in first.');
+    }
+    if (!tool) tool = 'dist';
+    updateUI();
+  }
+  function runAuto() {
+    if (!img) return;
+    calib = null; manual = null; active = null; updateUI();
+    setCal('', 'Looking for markers', 'This takes a second or two.');
+    setTimeout(function () {
+      var r = calibrateAuto();
+      if (r.fail !== undefined) {
+        calib = null;
+        if (r.fail === -2) setCal('warn', 'Marker size missing', 'Enter the printed side length of the marker in millimetres.');
+        else if (r.single) setCal('warn', r.want == null ? 'No marker found' : 'Marker ID ' + r.want + ' not found',
+          'Check the marker is sharp, flat and fully in view, and that the ID matches. Or use Calibrate by 4 corners and click its corners yourself.');
+        else setCal('warn', r.fail ? 'Only ' + r.fail + ' marker found' : 'No markers found',
+          'Retake the photo with all markers sharp and fully in view, or use Calibrate by 4 corners.');
+        updateUI(); return;
+      }
+      calib = r; afterCalibration();
+    }, 40);
+  }
+
+  /* ---------- results list ---------- */
+  function renderList() {
+    var ul = $('list'); ul.textContent = '';
+    meas.forEach(function (m, i) {
+      var r = compute(m.type, m.pts) || { value: '', sub: '' };
+      var li = document.createElement('li'); li.style.setProperty('--c', COLORS[i % COLORS.length]);
+      var sw = document.createElement('span'); sw.className = 'sw';
+      var mid = document.createElement('div');
+      var inp = document.createElement('input'); inp.className = 'lbl'; inp.type = 'text'; inp.value = m.label; inp.setAttribute('aria-label', 'Label for measurement ' + (i + 1));
+      inp.addEventListener('input', function () { m.label = inp.value; });
+      var val = document.createElement('div'); val.className = 'val'; val.textContent = r.value;
+      var sub = document.createElement('div'); sub.className = 'sub'; sub.textContent = r.sub;
+      mid.appendChild(inp); mid.appendChild(val); mid.appendChild(sub);
+      var del = document.createElement('button'); del.className = 'del'; del.type = 'button'; del.textContent = '×'; del.setAttribute('aria-label', 'Delete ' + m.label);
+      del.addEventListener('click', function () { meas.splice(i, 1); renderList(); updateUI(); });
+      li.appendChild(sw); li.appendChild(mid); li.appendChild(del); ul.appendChild(li);
+    });
+    $('emptyList').hidden = meas.length > 0;
+  }
+  function commit() {
+    if (!active || active.pts.length < need(active.type)) return;
+    var t = active.type;
+    meas.push({ type: t, pts: active.pts.slice(), label: NAMES[t] + ' ' + (nextNum[t]++) });
+    active = { type: t, pts: [] };
+    renderList(); updateUI();
+  }
+
+  /* ---------- placing and dragging points ---------- */
+  function addPoint(p) {
+    if (manual) {
+      manual.pts.push(p);
+      if (manual.pts.length === 4) {
+        var c = calibrateManual(manual.pts); manual = null;
+        if (c) { calib = c; afterCalibration(); return; }
+        setCal('warn', 'Could not calibrate', 'The four points do not form a usable rectangle. Try again.');
+      }
+      updateUI(); return;
+    }
+    if (!calib || !tool) return;
+    if (!active || active.type !== tool) active = { type: tool, pts: [] };
+    active.pts.push(p);
+    if ((tool === 'dist' || tool === 'angle') && active.pts.length >= need(tool)) { commit(); return; }
+    updateUI();
+  }
+  function hitPoint(x, y, rad) {
+    var lists = [];
+    if (manual) lists.push(manual.pts);
+    if (active) lists.push(active.pts);
+    meas.forEach(function (m) { lists.push(m.pts); });
+    var best = null, bd = rad;
+    lists.forEach(function (arr) {
+      arr.forEach(function (p, i) {
+        var d = Math.hypot(p[0] * view.s + view.tx - x, p[1] * view.s + view.ty - y);
+        if (d <= bd) { bd = d; best = { arr: arr, i: i }; }
+      });
+    });
+    return best;
+  }
+  function showLoupe(x, y, ix, iy) {
+    if (!img) return;
+    loupe.hidden = false; loupe.classList.toggle('left', x > stage.clientWidth - 170 && y < 170);
+    lctx.imageSmoothingEnabled = false; lctx.fillStyle = '#000'; lctx.fillRect(0, 0, 120, 120);
+    lctx.drawImage(img.canvas, ix - 12, iy - 12, 24, 24, 0, 0, 120, 120);
+    lctx.strokeStyle = 'rgba(255,60,60,0.95)'; lctx.lineWidth = 1;
+    lctx.beginPath(); lctx.moveTo(60, 0); lctx.lineTo(60, 120); lctx.moveTo(0, 60); lctx.lineTo(120, 60); lctx.stroke();
+  }
+  function hideLoupe() { loupe.hidden = true; }
+
+  var ptrs = {}, g = { mode: 'none' };
+  function localXY(e) { var r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+  canvas.addEventListener('pointerdown', function (e) {
+    if (!img) return;
+    canvas.setPointerCapture(e.pointerId);
+    var p = localXY(e); ptrs[e.pointerId] = { x: p[0], y: p[1], sx: p[0], sy: p[1], type: e.pointerType };
+    var ids = Object.keys(ptrs);
+    if (ids.length === 1) {
+      var hit = hitPoint(p[0], p[1], e.pointerType === 'mouse' ? 11 : 18);
+      g = hit ? { mode: 'drag', hit: hit, moved: false } : { mode: 'pan', moved: false, tx: view.tx, ty: view.ty };
+    } else if (ids.length === 2) {
+      var a = ptrs[ids[0]], b = ptrs[ids[1]];
+      g = { mode: 'pinch', d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, s0: view.s, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, tx0: view.tx, ty0: view.ty, moved: true };
+    }
+  });
+  canvas.addEventListener('pointermove', function (e) {
+    var p = localXY(e), q = ptrs[e.pointerId];
+    if (!q) {                                           // hover
+      if (e.pointerType === 'mouse' && img && (manual || (tool && calib))) { var ii = toImg(p[0], p[1]); showLoupe(p[0], p[1], ii[0], ii[1]); } else hideLoupe();
+      return;
+    }
+    q.x = p[0]; q.y = p[1];
+    if (g.mode === 'drag') {
+      if (Math.hypot(p[0] - q.sx, p[1] - q.sy) > 2) g.moved = true;
+      var ip = toImg(p[0], p[1]); g.hit.arr[g.hit.i] = ip; showLoupe(p[0], p[1], ip[0], ip[1]);
+      renderList(); schedule();
+    } else if (g.mode === 'pan') {
+      if (Math.hypot(p[0] - q.sx, p[1] - q.sy) > 5) g.moved = true;
+      if (g.moved) { view.tx = g.tx + (p[0] - q.sx); view.ty = g.ty + (p[1] - q.sy); view.userSet = true; schedule(); }
+    } else if (g.mode === 'pinch') {
+      var ids = Object.keys(ptrs); if (ids.length < 2) return;
+      var a = ptrs[ids[0]], b = ptrs[ids[1]], d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      var ns = Math.max((view.fit || 0.05) * 0.6, Math.min(60, g.s0 * d / g.d0)), r = ns / g.s0;
+      var cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+      view.s = ns; view.tx = cx - (g.mx - g.tx0) * r; view.ty = cy - (g.my - g.ty0) * r; view.userSet = true; schedule();
+    }
+  });
+  function endPtr(e) {
+    var q = ptrs[e.pointerId]; if (!q) return;
+    var p = localXY(e);
+    if (g.mode === 'pan' && !g.moved && e.type === 'pointerup' && Object.keys(ptrs).length === 1) {
+      var ip = toImg(p[0], p[1]);
+      if (ip[0] >= 0 && ip[1] >= 0 && ip[0] <= img.w && ip[1] <= img.h) addPoint(ip);
+    }
+    delete ptrs[e.pointerId];
+    if (Object.keys(ptrs).length === 0) { g = { mode: 'none' }; if (e.pointerType !== 'mouse') hideLoupe(); else if (!(manual || (tool && calib))) hideLoupe(); }
+    else g = { mode: 'none' };
+    updateUI();
+  }
+  canvas.addEventListener('pointerup', endPtr);
+  canvas.addEventListener('pointercancel', endPtr);
+  canvas.addEventListener('pointerleave', function (e) { if (!ptrs[e.pointerId]) hideLoupe(); });
+  canvas.addEventListener('wheel', function (e) {
+    if (!img) return; e.preventDefault();
+    var p = localXY(e); zoomAt(Math.pow(1.0015, -e.deltaY), p[0], p[1]);
+  }, { passive: false });
+
+  /* ---------- buttons ---------- */
+  var fileIn = $('file');
+  function pick() { fileIn.click(); }
+  $('btnLoad1').addEventListener('click', pick); $('btnLoad2').addEventListener('click', pick);
+  fileIn.addEventListener('change', function () { if (fileIn.files[0]) loadFile(fileIn.files[0]); fileIn.value = ''; });
+  stage.addEventListener('dragover', function (e) { e.preventDefault(); stage.classList.add('drag'); });
+  stage.addEventListener('dragleave', function () { stage.classList.remove('drag'); });
+  stage.addEventListener('drop', function (e) { e.preventDefault(); stage.classList.remove('drag'); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+
+  Object.keys(toolBtns).forEach(function (k) {
+    toolBtns[k].addEventListener('click', function () {
+      tool = tool === k ? null : k; manual = null;
+      if (active && active.type !== tool) active = null;
+      updateUI();
+    });
+  });
+  $('bFinish').addEventListener('click', commit);
+  $('bUndo').addEventListener('click', undo);
+  function undo() {
+    if (manual && manual.pts.length) { manual.pts.pop(); updateUI(); return; }
+    if (manual) { manual = null; updateUI(); return; }
+    if (active && active.pts.length) { active.pts.pop(); updateUI(); return; }
+    if (meas.length) { meas.pop(); renderList(); updateUI(); }
+  }
+  $('zIn').addEventListener('click', function () { zoomAt(1.5, stage.clientWidth / 2, stage.clientHeight / 2); });
+  $('zOut').addEventListener('click', function () { zoomAt(1 / 1.5, stage.clientWidth / 2, stage.clientHeight / 2); });
+  $('zFit').addEventListener('click', fitView);
+  $('bDetect').addEventListener('click', runAuto);
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="cmode"]'), function (r) {
+    r.addEventListener('change', function () { $('singleBox').hidden = calMode() !== 'single'; if (img) runAuto(); });
+  });
+  ['mkSize', 'mkId'].forEach(function (id) { $(id).addEventListener('change', function () { if (img && calMode() === 'single') runAuto(); }); });
+  $('bManual').addEventListener('click', function () {
+    manual = { pts: [] }; tool = null; active = null; calib = null;
+    setCal('', 'Calibrating by 4 corners', calMode() === 'single' ? 'Zoom in and click the four outer corners of the marker, starting top-left and going clockwise.' : 'Zoom in and click the four outer corners of the marker frame in the order shown on the photo.');
+    updateUI();
+  });
+  var clearTimer = 0;
+  $('bClear').addEventListener('click', function () {
+    var b = $('bClear');
+    if (!clearTimer) { b.textContent = 'Confirm clear'; clearTimer = setTimeout(function () { b.textContent = 'Clear all'; clearTimer = 0; }, 3000); return; }
+    clearTimeout(clearTimer); clearTimer = 0; b.textContent = 'Clear all'; meas = []; active = null; renderList(); updateUI();
+  });
+  document.addEventListener('keydown', function (e) {
+    var t = e.target && e.target.tagName; if (t === 'INPUT' || t === 'TEXTAREA') return;
+    if (e.key === 'Enter') { commit(); }
+    else if (e.key === 'Escape') { if (manual) manual = null; else active = null; updateUI(); }
+    else if ((e.key === 'z' && (e.ctrlKey || e.metaKey)) || e.key === 'Backspace') { e.preventDefault(); undo(); }
+  });
+
+  function csvText() {
+    var rows = [['label', 'type', 'value', 'unit', 'detail']];
+    meas.forEach(function (m) {
+      var r = compute(m.type, m.pts);
+      rows.push([m.label, NAMES[m.type], r.num.toFixed(m.type === 'area' ? 0 : 1), r.unit, r.sub]);
+    });
+    return rows.map(function (r) { return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(','); }).join('\n');
+  }
+  $('bCopy').addEventListener('click', function () {
+    var text = csvText(), ta = $('csv'), btn = $('bCopy');
+    function fallback() { ta.hidden = false; ta.value = text; ta.focus(); ta.select(); btn.textContent = 'Select and copy below'; setTimeout(function () { btn.textContent = 'Copy results'; }, 2500); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { ta.hidden = true; btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy results'; }, 1500); }, fallback);
+    } else fallback();
+  });
+
+  /* ---------- loading ---------- */
+  function loadFile(file) {
+    var url = URL.createObjectURL(file), im = new Image();
+    $('fileMeta').textContent = 'Loading ' + file.name + '...';
+    im.onload = function () {
+      var sc = Math.min(1, 4096 / Math.max(im.naturalWidth, im.naturalHeight));
+      var w = Math.round(im.naturalWidth * sc), h = Math.round(im.naturalHeight * sc);
+      var c = document.createElement('canvas'); c.width = w; c.height = h;
+      var cx = c.getContext('2d', { willReadFrequently: true }); cx.drawImage(im, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      var d = cx.getImageData(0, 0, w, h).data; gray = new Uint8ClampedArray(w * h);
+      for (var i = 0, j = 0; i < d.length; i += 4, j++) gray[j] = (d[i] * 77 + d[i + 1] * 150 + d[i + 2] * 29) >> 8;
+      img = { canvas: c, w: w, h: h, name: file.name };
+      meas = []; active = null; manual = null; calib = null; tool = null; nextNum = { dist: 1, path: 1, area: 1, angle: 1 };
+      $('fileMeta').textContent = file.name + ', ' + w + ' by ' + h + ' px' + (sc < 1 ? ' (reduced from ' + im.naturalWidth + ' by ' + im.naturalHeight + ')' : '') + '.';
+      renderList(); fitView(); updateUI(); runAuto();
+    };
+    im.onerror = function () { URL.revokeObjectURL(url); $('fileMeta').textContent = 'That file could not be read as an image.'; };
+    im.src = url;
+  }
+
+  if (window.ResizeObserver) new ResizeObserver(resizeCanvas).observe(stage); else window.addEventListener('resize', resizeCanvas);
+  resizeCanvas(); renderList(); updateUI();
+
+  /* Small hook used for automated checks of the maths and click mapping. */
+  window.__fm = {
+    imgToScreen: function (x, y) { return [x * view.s + view.tx, y * view.s + view.ty]; },
+    measure: function (type, pts) { return compute(type, pts); },
+    state: function () { return { calibrated: !!calib, rms: calib && calib.rms, n: calib && calib.n, mode: calib && calib.mode, meas: meas.length, w: img && img.w, h: img && img.h }; }
+  };
+})();
+</script>
+
+</body></html>
